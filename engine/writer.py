@@ -20,13 +20,16 @@ Rules:
 - 4 to 6 segments. Each "voice" line is one or two short sentences.
 - Each "screen" text is 2 to 5 words in capitals, the punchline of that segment.
 - "stamp" is "CONFIRMED", "RUMOR" or null. Use stamps only for news.
+- "image" is the name of the real wrestler (or person) the segment is about, exactly as their best-known
+  ring name, for example "Ric Flair" or "Roman Reigns". It is used to find a real photo of them, so every
+  segment except the last must have one. Spread different wrestlers across segments when the story allows.
 - "style" is "quote" when the screen text is a quote someone said, otherwise null. Quote screen text keeps its
   normal capitalization, has no quotation marks, and is at most 15 words. Only use real, well-documented quotes,
   attributed to the right person. Never make up a quote.
 - The caption opens with a bold-style headline in capitals, then 1 or 2 sentences ending in a question,
   then 4 or 5 hashtags. The first hashtag is exactly #HeadOfTheTableTalk.
 Return only JSON in this shape:
-{"title": "...", "segments": [{"voice": "...", "screen": "...", "stamp": null, "style": null}], "caption": "..."}"""
+{"title": "...", "segments": [{"voice": "...", "screen": "...", "image": "...", "stamp": null, "style": null}], "caption": "..."}"""
 
 FORMAT_BRIEFS = {
     "table_report": (
@@ -55,6 +58,7 @@ FORMAT_BRIEFS = {
     ),
     "who_said_it": (
         "Format: WHO SAID IT?, a 30-second quiz. Exactly 6 segments in this order: "
+        "Segments 1 to 3 must not give the answer away: their image is \"WWE crowd\". "
         "1) hook inviting viewers to guess (screen: WHO SAID IT?); "
         "2) the famous quote, read aloud (style: quote, screen: the quote); "
         "3) the voice says only \"Three. Two. One.\" (screen: COMMENT YOUR GUESS); "

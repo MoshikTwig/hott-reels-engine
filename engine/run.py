@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from engine import feeds, notify, render, state, voice, writer
+from engine import feeds, images, notify, render, state, voice, writer
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,25 +54,39 @@ def make_script(fmt, config):
 def build(script, config, out_dir):
     brand, video = config["brand"], config["video"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "script.json").write_text(json.dumps(script, indent=2))
-    (out_dir / "caption.txt").write_text(script["caption"] + "\n")
 
     segments = script["segments"]
     clips = voice.narrate(segments, out_dir, config["voice"]["name"], config["voice"]["rate"])
     bg = render.background(video["width"], video["height"], brand)
+    photos = images.PhotoPicker(out_dir)
     parts = []
-    for i, (segment, (audio, seconds)) in enumerate(zip(segments, clips)):
-        frame = out_dir / f"frame_{i}.png"
-        render.draw_frame(segment, i, len(segments), bg, brand).save(frame)
+    for i, (segment, (audio, seconds, words)) in enumerate(zip(segments, clips)):
+        photo = photos.photo_for(segment.get("image"), i)
+        base, layer = render.draw_frame(segment, i, len(segments), photo, bg, brand)
+        frame, overlay = out_dir / f"frame_{i}.jpg", out_dir / f"layer_{i}.png"
+        base.save(frame, quality=92)
+        layer.save(overlay)
+        ass = None
+        if i < len(segments) - 1 and segment.get("style") != "quote":
+            ass = out_dir / f"captions_{i}.ass"
+            render.captions_ass(words, ass, brand)
         part = out_dir / f"part_{i}.mp4"
-        render.segment_video(frame, audio, seconds, part, video["fps"])
+        render.segment_video(frame, overlay, audio, seconds, part, video["fps"], i, ass)
         parts.append(part)
+
+    credit = photos.credit_line()
+    if credit:
+        script["caption"] = f"{script['caption']}\n\n{credit}"
+    (out_dir / "script.json").write_text(json.dumps(script, indent=2))
+    (out_dir / "caption.txt").write_text(script["caption"] + "\n")
 
     tracks = sorted((ROOT / "assets" / "music").glob("*.mp3"))
     music = random.choice(tracks) if tracks else None
     reel = out_dir / "reel.mp4"
     render.assemble(parts, reel, music, video["music_volume"])
-    for leftover in [*parts, *out_dir.glob("voice_*.mp3"), out_dir / "segments.txt"]:
+    for leftover in [*parts, *out_dir.glob("voice_*.mp3"), *out_dir.glob("captions_*.ass"),
+                     *out_dir.glob("layer_*.png"), *out_dir.glob("photo_*.jpg"),
+                     out_dir / "segments.txt"]:
         leftover.unlink(missing_ok=True)
     return reel
 
