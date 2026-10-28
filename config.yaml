@@ -13,15 +13,16 @@ feeds:
   - https://www.cagesideseats.com/rss/current.xml
 
 # Which format runs on which weekday when the workflow picks automatically
-# (0 = Monday). Four news days, two history days, one debate day.
+# (0 = Monday). Built around what got the most engagement: wrestlers' own
+# words and their real-life stories.
 schedule:
-  0: table_report
-  1: classic_rewind
-  2: table_report
-  3: verdict
+  0: who_said_it
+  1: table_report
+  2: said_it_best
+  3: behind_character
   4: table_report
-  5: classic_rewind
-  6: table_report
+  5: who_said_it
+  6: classic_rewind
 
 voice:
   name: en-US-ChristopherNeural
