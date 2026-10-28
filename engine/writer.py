@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 
 import requests
 
@@ -60,16 +61,28 @@ def _available_flash_model(key):
     return sorted(flash, reverse=True)[0]
 
 
-def _generate(model, key, prompt):
-    return requests.post(
-        API_URL.format(model=model),
-        headers={"x-goog-api-key": key},
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
-        },
-        timeout=120,
-    )
+def _generate(model, key, prompt, attempts=3):
+    """Call the model, retrying the slow or busy answers the free tier sometimes gives."""
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.post(
+                API_URL.format(model=model),
+                headers={"x-goog-api-key": key},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
+                },
+                timeout=300,
+            )
+        except requests.exceptions.RequestException as error:
+            if attempt == attempts:
+                raise SystemExit(f"Gemini API did not answer after {attempts} tries: {error}")
+            print(f"Gemini API try {attempt} failed ({error}), retrying.")
+        else:
+            if response.status_code not in (429, 500, 502, 503, 504) or attempt == attempts:
+                return response
+            print(f"Gemini API try {attempt} returned {response.status_code}, retrying.")
+        time.sleep(20 * attempt)
 
 
 def write_script(fmt, material, model):
