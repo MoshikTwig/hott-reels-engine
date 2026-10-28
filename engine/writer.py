@@ -20,10 +20,13 @@ Rules:
 - 4 to 6 segments. Each "voice" line is one or two short sentences.
 - Each "screen" text is 2 to 5 words in capitals, the punchline of that segment.
 - "stamp" is "CONFIRMED", "RUMOR" or null. Use stamps only for news.
+- "style" is "quote" when the screen text is a quote someone said, otherwise null. Quote screen text keeps its
+  normal capitalization, has no quotation marks, and is at most 15 words. Only use real, well-documented quotes,
+  attributed to the right person. Never make up a quote.
 - The caption opens with a bold-style headline in capitals, then 1 or 2 sentences ending in a question,
   then 4 or 5 hashtags. The first hashtag is exactly #HeadOfTheTableTalk.
 Return only JSON in this shape:
-{"title": "...", "segments": [{"voice": "...", "screen": "...", "stamp": null}], "caption": "..."}"""
+{"title": "...", "segments": [{"voice": "...", "screen": "...", "stamp": null, "style": null}], "caption": "..."}"""
 
 FORMAT_BRIEFS = {
     "table_report": (
@@ -39,6 +42,25 @@ FORMAT_BRIEFS = {
     "verdict": (
         "Format: THE VERDICT, a 30-second debate. Hook, the case for one side with real facts, the case for "
         "the other side, closing question asking fans to vote in the comments."
+    ),
+    "said_it_best": (
+        "Format: SAID IT BEST, a 35-second Reel about one famous promo line. Hook, the line itself as a quote "
+        "segment, when and where it was said, the story behind it, why fans still repeat it, closing question "
+        "about who the best talker ever is."
+    ),
+    "behind_character": (
+        "Format: BEHIND THE CHARACTER, a 40-second true human story about the real person behind a wrestler: "
+        "family, a comeback, an illness beaten, a real friendship or rivalry. Warm and emotional, never gossip. "
+        "Hook, who they are on TV, the real-life story in 2 or 3 beats, what it shows about them, closing question."
+    ),
+    "who_said_it": (
+        "Format: WHO SAID IT?, a 30-second quiz. Exactly 6 segments in this order: "
+        "1) hook inviting viewers to guess (screen: WHO SAID IT?); "
+        "2) the famous quote, read aloud (style: quote, screen: the quote); "
+        "3) the voice says only \"Three. Two. One.\" (screen: COMMENT YOUR GUESS); "
+        "4) the reveal of who said it (screen: their name); "
+        "5) when and why they said it; "
+        "6) closing question asking how many got it right."
     ),
 }
 
@@ -115,9 +137,13 @@ def enforce_rules(script, hashtag="#HeadOfTheTableTalk"):
             caption += "\n" + hashtag
     script["caption"] = caption
     for segment in script["segments"]:
-        segment["screen"] = segment.get("screen", "").upper()
         if segment.get("stamp") not in ("CONFIRMED", "RUMOR"):
             segment["stamp"] = None
+        if segment.get("style") == "quote":
+            segment["screen"] = segment.get("screen", "").strip().strip('"\u201c\u201d')
+        else:
+            segment["style"] = None
+            segment["screen"] = segment.get("screen", "").upper()
     return script
 
 

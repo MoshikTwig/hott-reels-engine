@@ -12,9 +12,12 @@ Makes a branded, original 30 to 40 second vertical Reel every day, for free:
 
 | Format | When | What |
 | --- | --- | --- |
-| `table_report` | Mon, Wed, Fri, Sun | News breakdown from the feeds, with CONFIRMED / RUMOR stamps |
-| `classic_rewind` | Tue, Sat | A legendary moment from `topics.yaml` |
-| `verdict` | Thu | A debate from `topics.yaml`, ending with a vote |
+| `who_said_it` | Mon, Sat | Quiz: a famous quote, 3 seconds to guess in the comments, then the reveal |
+| `table_report` | Tue, Fri | News breakdown from the feeds, with CONFIRMED / RUMOR stamps |
+| `said_it_best` | Wed | One legendary promo line and the story behind it |
+| `behind_character` | Thu | A true story about the real person behind a wrestler |
+| `classic_rewind` | Sun | A legendary moment from `topics.yaml` |
+| `verdict` | by hand | A debate from `topics.yaml`, ending with a vote |
 
 Change the days in `config.yaml`, and add topics to the end of `topics.yaml`.
 

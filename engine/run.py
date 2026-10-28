@@ -79,7 +79,7 @@ def build(script, config, out_dir):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--format", choices=["auto", "table_report", "classic_rewind", "verdict"],
+    parser.add_argument("--format", choices=["auto", *writer.FORMAT_BRIEFS],
                         default="auto")
     parser.add_argument("--script", help="Render this script JSON instead of asking the AI")
     parser.add_argument("--no-notify", action="store_true")

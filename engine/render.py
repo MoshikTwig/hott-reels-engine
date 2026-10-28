@@ -120,11 +120,17 @@ def draw_frame(segment, index, total, bg, brand):
 
     logo = _logo(170)
     img.paste(logo, ((W - logo.width) // 2, 90), logo)
-    font, lines = _fit(draw, segment["screen"], W - 160, 3, 180, 96)
+    if segment.get("style") == "quote":
+        text, max_lines, biggest, smallest = f"\u201c{segment['screen']}\u201d", 6, 120, 70
+    else:
+        text, max_lines, biggest, smallest = segment["screen"], 3, 180, 96
+    font, lines = _fit(draw, text, W - 160, max_lines, biggest, smallest)
     block = len(lines) * font.size * 1.12
     y = _centered(draw, lines, font, max(420, 760 - block / 2), gold)
     if segment.get("stamp"):
         y = _stamp(img, segment["stamp"], y + 30, brand)
+    if segment.get("style") == "quote":
+        return img  # the quote on screen is already what the voice says
     # Subtitles stay above the bottom fifth, which the Reels buttons cover.
     sub_font, sub_lines = _fit(draw, segment["voice"], W - 200, 4, 58, 44)
     _centered(draw, sub_lines, sub_font, max(1240, y + 70), white, gap=1.25)

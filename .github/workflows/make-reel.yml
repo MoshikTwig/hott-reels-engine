@@ -8,7 +8,7 @@ on:
       format:
         description: Which format to make
         type: choice
-        options: [auto, table_report, classic_rewind, verdict]
+        options: [auto, who_said_it, said_it_best, behind_character, table_report, classic_rewind, verdict]
         default: auto
 
 permissions:
