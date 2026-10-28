@@ -28,7 +28,7 @@ voice:
   rate: "+8%"
 
 ai:
-  model: gemini-2.5-flash
+  model: gemini-flash-latest
 
 video:
   width: 1080
