@@ -1,12 +1,13 @@
-"""Draw branded frames for each segment and assemble the vertical Reel with FFmpeg."""
+"""Build each segment from a real photo, branded overlays and word-by-word captions, then assemble the Reel."""
 
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGO = ROOT / "assets" / "logo.png"
+FONT_DIR = ROOT / "assets" / "fonts"
 FONT_CANDIDATES = [
     ROOT / "assets" / "fonts" / "Anton-Regular.ttf",
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
@@ -61,19 +62,53 @@ def _centered(draw, lines, font, y, fill, gap=1.12):
 
 
 def background(width, height, brand):
-    """Near-black canvas with a soft gold glow and film grain."""
+    """Near-black canvas with a soft gold glow, used when no photo is found."""
     black, gold = _hex(brand["black"]), _hex(brand["gold"])
     base = Image.new("RGB", (width, height), black)
     glow = Image.new("L", (width, height), 0)
     ImageDraw.Draw(glow).ellipse((-width * 0.3, height * 0.18, width * 1.3, height * 0.72), fill=60)
     glow = glow.filter(ImageFilter.GaussianBlur(220))
-    base = Image.composite(Image.new("RGB", (width, height), gold), base, glow)
-    noise = Image.effect_noise((width // 2, height // 2), 18).resize((width, height))
-    base = Image.blend(base, Image.merge("RGB", [noise] * 3), 0.04)
-    draw = ImageDraw.Draw(base)
-    inset = 36
-    draw.rectangle((inset, inset, width - inset, height - inset), outline=gold, width=3)
-    return base
+    return Image.composite(Image.new("RGB", (width, height), gold), base, glow)
+
+
+def _cover(img, width, height, focus_y=0.35):
+    """Scale to fill the frame and crop, keeping the upper part where faces usually are."""
+    scale = max(width / img.width, height / img.height)
+    img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
+    left = (img.width - width) // 2
+    top = int(max(0, min(img.height - height, img.height * focus_y - height * focus_y)))
+    return img.crop((left, top, left + width, top + height))
+
+
+def photo_canvas(photo, width, height, bg):
+    """A full-screen photo. Landscape shots sit large over a blurred copy of themselves."""
+    if photo is None:
+        return bg.copy()
+    img = ImageOps.exif_transpose(Image.open(photo)).convert("RGB")
+    if img.height / img.width >= 1.15:
+        canvas = _cover(img, width, height)
+    else:
+        canvas = _cover(img, width, height).filter(ImageFilter.GaussianBlur(40))
+        canvas = ImageEnhance.Brightness(canvas).enhance(0.45)
+        fg_width = int(width * 1.3)
+        fg = img.resize((fg_width, int(img.height * fg_width / img.width)), Image.LANCZOS)
+        fg = fg.crop(((fg_width - width) // 2, 0, (fg_width - width) // 2 + width, fg.height))
+        canvas.paste(fg, (0, int(height * 0.42 - fg.height / 2)))
+    canvas = ImageEnhance.Contrast(canvas).enhance(1.12)
+    return ImageEnhance.Color(canvas).enhance(1.08)
+
+
+def _shade(img, top=460, bottom_start=1000, strength=225):
+    """Dark gradients at the top and bottom so text stays readable on any photo."""
+    W, H = img.size
+    mask = Image.new("L", (1, H), 0)
+    for y in range(H):
+        if y < top:
+            mask.putpixel((0, y), int(strength * (1 - y / top) ** 1.4))
+        elif y > bottom_start:
+            mask.putpixel((0, y), int(strength * ((y - bottom_start) / (H - bottom_start)) ** 1.2))
+    mask = mask.resize((W, H))
+    return Image.composite(Image.new("RGB", (W, H), (8, 8, 8)), img, mask)
 
 
 def _logo(width):
@@ -81,71 +116,139 @@ def _logo(width):
     return logo.resize((width, int(logo.height * width / logo.width)), Image.LANCZOS)
 
 
+def _chyron(img, text, y, brand):
+    """The headline: black capitals on a gold bar, like a TV graphic."""
+    gold, black = _hex(brand["gold"]), _hex(brand["black"])
+    draw = ImageDraw.Draw(img)
+    font, lines = _fit(draw, text, img.width - 200, 2, 96, 60)
+    line_h = font.size * 1.15
+    for i, line in enumerate(lines):
+        w = draw.textlength(line, font=font)
+        x = (img.width - w) / 2
+        top = y + i * (line_h + 14)
+        draw.rectangle((x - 30, top - 10, x + w + 30, top + line_h + 6), fill=gold)
+        draw.text((x, top), line, font=font, fill=black)
+    return y + len(lines) * (line_h + 14)
+
+
 def _stamp(img, text, y, brand):
     gold, black, white = _hex(brand["gold"]), _hex(brand["black"]), _hex(brand["white"])
-    font = _font(76)
+    font = _font(70)
     probe = ImageDraw.Draw(img)
-    w = int(probe.textlength(text, font=font)) + 80
-    h = 120
+    w = int(probe.textlength(text, font=font)) + 70
+    h = 110
     tile = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(tile)
     if text == "CONFIRMED":
         d.rounded_rectangle((0, 0, w - 1, h - 1), 14, fill=gold)
-        d.text((40, 14), text, font=font, fill=black)
+        d.text((35, 12), text, font=font, fill=black)
     else:
-        d.rounded_rectangle((3, 3, w - 4, h - 4), 14, outline=white, width=6)
-        d.text((40, 14), text, font=font, fill=white)
+        d.rounded_rectangle((0, 0, w - 1, h - 1), 14, fill=(20, 20, 20, 200), outline=white, width=6)
+        d.text((35, 12), text, font=font, fill=white)
     tile = tile.rotate(6, expand=True, resample=Image.BICUBIC)
     img.paste(tile, ((img.width - tile.width) // 2, int(y)), tile)
     return y + tile.height
 
 
-def draw_frame(segment, index, total, bg, brand):
-    img = bg.copy()
-    draw = ImageDraw.Draw(img)
+def draw_frame(segment, index, total, photo, bg, brand):
+    """Return the photo layer (which slowly zooms) and a transparent graphics layer (which stays still)."""
+    W, H = bg.size
     gold, white = _hex(brand["gold"]), _hex(brand["white"])
-    W, H = img.size
     last = index == total - 1
+    quote = segment.get("style") == "quote"
 
-    draw.rectangle((36, 36, 36 + (W - 72) * (index + 1) / total, 48), fill=gold)
+    base = photo_canvas(photo, W, H, bg)
+    if last or quote:
+        base = ImageEnhance.Brightness(base.filter(ImageFilter.GaussianBlur(14 if last else 6))).enhance(0.4)
+    base = _shade(base)
+
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    draw.rectangle((0, 0, W * (index + 1) / total, 12), fill=gold)
 
     if last:
-        # End card: full logo, the question, a call to comment. No subtitle.
-        logo = _logo(380)
-        img.paste(logo, ((W - logo.width) // 2, 150), logo)
-        font, lines = _fit(draw, segment["screen"], W - 180, 3, 140, 80)
-        y = _centered(draw, lines, font, 150 + logo.height + 80, gold)
+        logo = _logo(360)
+        layer.paste(logo, ((W - logo.width) // 2, 170), logo)
+        font, lines = _fit(draw, segment["screen"], W - 160, 3, 140, 80)
+        y = _centered(draw, lines, font, 170 + logo.height + 80, gold)
         _centered(draw, ["COMMENT BELOW"], _font(64), y + 50, white)
-        return img
+        return base, layer
 
-    logo = _logo(170)
-    img.paste(logo, ((W - logo.width) // 2, 90), logo)
-    if segment.get("style") == "quote":
-        text, max_lines, biggest, smallest = f"\u201c{segment['screen']}\u201d", 6, 120, 70
-    else:
-        text, max_lines, biggest, smallest = segment["screen"], 3, 180, 96
-    font, lines = _fit(draw, text, W - 160, max_lines, biggest, smallest)
-    block = len(lines) * font.size * 1.12
-    y = _centered(draw, lines, font, max(420, 760 - block / 2), gold)
+    logo = _logo(120)
+    layer.paste(logo, (48, 56), logo)
+
+    if quote:
+        font, lines = _fit(draw, f"\u201c{segment['screen']}\u201d", W - 140, 6, 120, 70)
+        block = len(lines) * font.size * 1.12
+        _centered(draw, lines, font, H * 0.45 - block / 2, white)
+        return base, layer
+
+    y = _chyron(layer, segment["screen"], 270, brand)
     if segment.get("stamp"):
-        y = _stamp(img, segment["stamp"], y + 30, brand)
-    if segment.get("style") == "quote":
-        return img  # the quote on screen is already what the voice says
-    # Subtitles stay above the bottom fifth, which the Reels buttons cover.
-    sub_font, sub_lines = _fit(draw, segment["voice"], W - 200, 4, 58, 44)
-    _centered(draw, sub_lines, sub_font, max(1240, y + 70), white, gap=1.25)
-    return img
+        _stamp(layer, segment["stamp"], y + 20, brand)
+    return base, layer
 
 
-def segment_video(frame_path, audio_path, seconds, out_path, fps):
-    frames = int((seconds + PAD_SECONDS) * fps)
-    zoom = (
-        f"scale=2160:-1,zoompan=z='min(1+0.0006*on,1.08)':d={frames}"
-        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={fps}"
+def _ass_time(seconds):
+    cs = int(round(seconds * 100))
+    return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
+
+
+def captions_ass(words, path, brand, max_words=3):
+    """Big word-by-word captions: groups of up to 3 words, the spoken word lit in gold."""
+    r, g, b = _hex(brand["gold"])
+    gold = f"&H00{b:02X}{g:02X}{r:02X}"
+    groups, current = [], []
+    for word in words:
+        current.append(word)
+        if len(current) == max_words or word[2].rstrip().endswith((".", ",", "?", "!")):
+            groups.append(current)
+            current = []
+    if current:
+        groups.append(current)
+    timed = []
+    for group in groups:
+        for i, (start, end, _) in enumerate(group):
+            text = " ".join(
+                (f"{{\\c{gold}}}{w.upper()}{{\\c&H00FFFFFF&}}" if j == i else w.upper())
+                for j, (_, _, w) in enumerate(group)
+            )
+            timed.append([start, end + 0.15, text])
+    for current, following in zip(timed, timed[1:]):
+        current[1] = following[0]
+    events = [
+        f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Pop,,0,0,0,,"
+        f"{{\\pos(540,1390)\\fscx106\\fscy106\\t(0,90,\\fscx100\\fscy100)}}{text}"
+        for start, end, text in timed
+    ]
+    path.write_text(
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n"
+        "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, "
+        "Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        "Style: Pop,Anton,104,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,1,0,1,"
+        "7,3,5,60,60,0,1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+        + "\n".join(events) + "\n"
     )
+
+
+def segment_video(base_path, layer_path, audio_path, seconds, out_path, fps, index=0, ass_path=None):
+    frames = int((seconds + PAD_SECONDS) * fps)
+    # Alternate a slow push in with a slow pull out on the photo so cuts feel alive.
+    z = "min(1+0.0009*on,1.12)" if index % 2 == 0 else "max(1.12-0.0009*on,1)"
+    graph = (
+        f"[0:v]scale=2160:-1,zoompan=z='{z}':d={frames}"
+        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={fps}[photo];"
+        "[photo][1:v]overlay=0:0:format=auto"
+    )
+    if ass_path:
+        graph += f",subtitles={ass_path}:fontsdir={FONT_DIR}"
+    graph += "[v]"
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", str(frame_path), "-i", str(audio_path),
-         "-vf", zoom, "-af", f"apad=pad_dur={PAD_SECONDS}", "-t", f"{seconds + PAD_SECONDS:.2f}",
+        ["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", str(base_path), "-loop", "1", "-i", str(layer_path),
+         "-i", str(audio_path), "-filter_complex", graph, "-map", "[v]", "-map", "2:a",
+         "-af", f"apad=pad_dur={PAD_SECONDS}", "-t", f"{seconds + PAD_SECONDS:.2f}",
          "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-ar", "44100", "-ac", "2", str(out_path)],
         check=True,

@@ -5,7 +5,7 @@ Makes a branded, original 30 to 40 second vertical Reel every day, for free:
 1. Reads the wrestling RSS feeds (or picks an evergreen topic from `topics.yaml`).
 2. Writes the script and caption with the free Gemini API, following the brand rules.
 3. Narrates it with free Microsoft neural voices (`edge-tts`).
-4. Draws gold-on-black frames with the logo and renders the video with FFmpeg.
+4. Finds real, freely licensed photos of the wrestlers on Wikimedia Commons (credited in the caption), adds slow zoom, a gold headline bar and word-by-word captions, and renders the video with FFmpeg.
 5. Sends the Reel and caption to Telegram for review. Nothing is posted automatically yet.
 
 ## Formats
