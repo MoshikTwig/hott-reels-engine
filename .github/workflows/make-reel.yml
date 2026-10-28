@@ -1,0 +1,59 @@
+name: Make a Reel
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # every day at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      format:
+        description: Which format to make
+        type: choice
+        options: [auto, table_report, classic_rewind, verdict]
+        default: auto
+
+permissions:
+  contents: write
+
+concurrency:
+  group: make-reel
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -r requirements.txt
+          curl -sSfL -o assets/fonts/Anton-Regular.ttf \
+            https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf
+
+      - name: Make the Reel
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m engine.run --format "${{ inputs.format || 'auto' }}"
+
+      - name: Save the Reel
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel
+          path: out/*/
+          retention-days: 14
+
+      - name: Remember what was used
+        run: |
+          git config user.name "reels-engine"
+          git config user.email "reels-engine@users.noreply.github.com"
+          git add state/
+          git diff --cached --quiet || git commit -m "Record used stories and topics"
+          git push

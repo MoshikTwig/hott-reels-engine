@@ -1,0 +1,37 @@
+# Head of the Table Talk Reels engine settings.
+
+brand:
+  name: Head of the Table Talk
+  hashtag: "#HeadOfTheTableTalk"
+  gold: "#CE9E38"
+  black: "#131210"
+  white: "#F5F1E8"
+
+feeds:
+  - https://wrestlingnews.co/feed/
+  - https://www.wrestlingheadlines.com/feed/
+  - https://www.cagesideseats.com/rss/current.xml
+
+# Which format runs on which weekday when the workflow picks automatically
+# (0 = Monday). Four news days, two history days, one debate day.
+schedule:
+  0: table_report
+  1: classic_rewind
+  2: table_report
+  3: verdict
+  4: table_report
+  5: classic_rewind
+  6: table_report
+
+voice:
+  name: en-US-ChristopherNeural
+  rate: "+8%"
+
+ai:
+  model: gemini-2.5-flash
+
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  music_volume: 0.12
