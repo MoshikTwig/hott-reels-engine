@@ -7,6 +7,7 @@ import re
 import requests
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 BRAND_RULES = """You write for Head of the Table Talk, a wrestling media brand on Facebook and Instagram.
 Rules:
@@ -41,13 +42,27 @@ FORMAT_BRIEFS = {
 }
 
 
-def write_script(fmt, material, model):
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        raise SystemExit("GEMINI_API_KEY is not set. Add it as a GitHub secret.")
-    prompt = f"{BRAND_RULES}\n\n{FORMAT_BRIEFS[fmt]}\n\n{material}"
-    response = requests.post(
-        API_URL.format(model=os.environ.get("GEMINI_MODEL", model)),
+def _available_flash_model(key):
+    """Google retires model names over time, so ask which Flash model this key can use now."""
+    response = requests.get(MODELS_URL, headers={"x-goog-api-key": key},
+                            params={"pageSize": 1000}, timeout=60)
+    response.raise_for_status()
+    names = [
+        m["name"].removeprefix("models/") for m in response.json().get("models", [])
+        if "generateContent" in m.get("supportedGenerationMethods", [])
+    ]
+    if "gemini-flash-latest" in names:
+        return "gemini-flash-latest"
+    skip = ("lite", "image", "tts", "live", "audio", "preview", "exp", "thinking")
+    flash = [n for n in names if "flash" in n and not any(word in n for word in skip)]
+    if not flash:
+        raise SystemExit(f"No usable Gemini Flash model for this key. Available: {names}")
+    return sorted(flash, reverse=True)[0]
+
+
+def _generate(model, key, prompt):
+    return requests.post(
+        API_URL.format(model=model),
         headers={"x-goog-api-key": key},
         json={
             "contents": [{"parts": [{"text": prompt}]}],
@@ -55,7 +70,21 @@ def write_script(fmt, material, model):
         },
         timeout=120,
     )
-    response.raise_for_status()
+
+
+def write_script(fmt, material, model):
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise SystemExit("GEMINI_API_KEY is not set. Add it as a GitHub secret.")
+    prompt = f"{BRAND_RULES}\n\n{FORMAT_BRIEFS[fmt]}\n\n{material}"
+    model = os.environ.get("GEMINI_MODEL", model)
+    response = _generate(model, key, prompt)
+    if response.status_code == 404:
+        fallback = _available_flash_model(key)
+        print(f"Model {model} is not available, using {fallback} instead.")
+        response = _generate(fallback, key, prompt)
+    if not response.ok:
+        raise SystemExit(f"Gemini API error {response.status_code}: {response.text[:500]}")
     text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
     return enforce_rules(json.loads(text))
 
