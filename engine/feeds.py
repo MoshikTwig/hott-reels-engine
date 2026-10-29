@@ -17,6 +17,19 @@ def _clean(text):
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
+def _feed_image(entry):
+    """The story's own photo, if the feed includes one."""
+    for media in entry.get("media_content", []) + entry.get("media_thumbnail", []):
+        if media.get("url") and media.get("medium", "image") == "image":
+            return media["url"]
+    for link in entry.get("links", []):
+        if link.get("rel") == "enclosure" and link.get("type", "").startswith("image") and link.get("href"):
+            return link["href"]
+    content = " ".join(c.get("value", "") for c in entry.get("content", [])) + entry.get("summary", "")
+    match = re.search(r"<img[^>]+src=[\"']([^\"']+)", content)
+    return html.unescape(match.group(1)) if match else ""
+
+
 def fresh_stories(feed_urls, limit=15):
     seen = set(state.load("seen_stories", []))
     cutoff = time.time() - MAX_AGE_HOURS * 3600
@@ -38,6 +51,7 @@ def fresh_stories(feed_urls, limit=15):
                 "link": link,
                 "source": _clean(parsed.feed.get("title", url)),
                 "published": stamp,
+                "image": _feed_image(entry),
             })
     stories.sort(key=lambda s: s["published"], reverse=True)
     return stories[:limit]
