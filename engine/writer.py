@@ -69,6 +69,9 @@ FORMAT_BRIEFS = {
 }
 
 
+BUSY_FALLBACK = "gemini-flash-lite-latest"
+
+
 def _available_flash_model(key):
     """Google retires model names over time, so ask which Flash model this key can use now."""
     response = requests.get(MODELS_URL, headers={"x-goog-api-key": key},
@@ -87,7 +90,7 @@ def _available_flash_model(key):
     return sorted(flash, reverse=True)[0]
 
 
-def _generate(model, key, prompt, attempts=3):
+def _generate(model, key, prompt, attempts=5):
     """Call the model, retrying the slow or busy answers the free tier sometimes gives."""
     for attempt in range(1, attempts + 1):
         try:
@@ -122,6 +125,10 @@ def ask_json(prompt, model):
         fallback = _available_flash_model(key)
         print(f"Model {model} is not available, using {fallback} instead.")
         response = _generate(fallback, key, prompt)
+    if response.status_code in (429, 500, 502, 503, 504):
+        # Busy spells on the free tier usually hit one model; the lighter one often still answers.
+        print(f"{model} is busy, trying {BUSY_FALLBACK} instead.")
+        response = _generate(BUSY_FALLBACK, key, prompt)
     if not response.ok:
         raise SystemExit(f"Gemini API error {response.status_code}: {response.text[:500]}")
     return json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])

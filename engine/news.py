@@ -44,6 +44,45 @@ Return only JSON: {{"posts": [{{"story_index": 0, "post": "...", "image_headline
 
 {stories}"""
 
+DEBATE_PROMPT = """You run the Facebook page Head of the Table Talk, where wrestling fans argue about the business.
+From the stories below, pick the {count} that would start the biggest friendly argument among fans, best first,
+and write one debate post for each. Skip roundups and digests that cover several topics.
+
+Rules for every post:
+- English only. Bold, confident, fun, like a fan with strong opinions at the head of the table.
+- Line 1 is the hot take or question in CAPITALS between two matching emojis.
+- Then 1 or 2 short lines with the facts it comes from. Only use facts from the story given; never invent names,
+  dates, quotes or numbers, and never guess how a cut-off summary continues.
+- Then 1 or 2 lines with the page's opinion, clearly an opinion ("We think...", "Hot take:").
+- Then one direct question asking fans where they stand. Don't ask for likes, shares or tags.
+- Never include a link or a website address.
+- Last line: 4 or 5 hashtags. The first is exactly #HeadOfTheTableTalk.
+
+Each post also gets a big line printed on its photo:
+- "image_headline": a question or hot take of 4 to 8 words, no emojis (for example: IS CM PUNK THE BEST
+  TALKER IN WWE TODAY?).
+- "highlight": the 1 to 3 words of image_headline to color gold, usually the wrestler's name.
+
+Return only JSON: {{"posts": [{{"story_index": 0, "post": "...", "image_headline": "...", "highlight": "..."}}]}}
+
+{stories}"""
+
+
+def _post_from(item, story, tag):
+    body, _, tags = item["post"].strip().rpartition("\n")
+    if "#" not in tags:
+        body, tags = item["post"].strip(), ""
+    credit = story["source"] or postimage.source_name(story["link"])
+    return {
+        # No links: Facebook pushes posts that send people away down in the feed.
+        "caption": writer.hashtag_first(f"{body.strip()}\n\nSource: {credit}\n\n{tags.strip()}"),
+        "image_headline": item.get("image_headline") or story["title"],
+        "highlight": item.get("highlight", ""),
+        "tag": tag,
+        "credit": credit,
+        "story": story,
+    }
+
 
 def write_posts(stories, model, count):
     """Ask for a few spare posts, so stories without a usable photo can be skipped."""
@@ -54,24 +93,25 @@ def write_posts(stories, model, count):
         if not 0 <= index < len(stories) or index in used:
             continue
         used.add(index)
-        story = stories[index]
-        body, _, tags = item["post"].strip().rpartition("\n")
-        if "#" not in tags:
-            body, tags = item["post"].strip(), ""
-        credit = story["source"] or postimage.source_name(story["link"])
-        posts.append({
-            # No links: Facebook pushes posts that send people away down in the feed.
-            "caption": writer.hashtag_first(f"{body.strip()}\n\nSource: {credit}\n\n{tags.strip()}"),
-            "image_headline": item.get("image_headline") or story["title"],
-            "highlight": item.get("highlight", ""),
-            "tag": item.get("tag", "").upper(),
-            "credit": credit,
-            "story": story,
-        })
+        posts.append(_post_from(item, stories[index], item.get("tag", "").upper()))
     return posts
 
 
-def add_images(posts, brand, out, count):
+def write_debates(stories, model, count):
+    """Debate posts built on a story, so the photo is that story's own."""
+    answer = writer.ask_json(DEBATE_PROMPT.format(count=count, stories=writer.story_material(stories)), model)
+    posts, used = [], set()
+    for item in answer.get("posts", []):
+        index = int(item.get("story_index", -1))
+        if 0 <= index < len(stories) and index not in used:
+            used.add(index)
+            post = _post_from(item, stories[index], "THE TABLE DEBATE")
+            post["kicker"] = "Where do you stand?"
+            posts.append(post)
+    return posts
+
+
+def add_images(posts, brand, out, count, first_number=1):
     """Render the branded image for each post until there are enough; skip stories without a photo."""
     ready = []
     for post in posts:
@@ -79,8 +119,9 @@ def add_images(posts, brand, out, count):
         if photo is None:
             print(f"No usable photo for {post['story']['title']}, skipping it.")
             continue
+        path = out / f"post-{first_number + len(ready)}.jpg"
         post["image"] = str(postimage.render_post(photo, post["image_headline"], post["highlight"], post["tag"],
-                                                  post["credit"], brand, out / f"post-{len(ready) + 1}.jpg"))
+                                                  post["credit"], brand, path, post.get("kicker", "")))
         ready.append(post)
         if len(ready) == count:
             break
@@ -89,7 +130,8 @@ def add_images(posts, brand, out, count):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--count", type=int, default=3)
+    parser.add_argument("--count", type=int, default=3, help="News posts")
+    parser.add_argument("--debates", type=int, default=1, help="Debate posts")
     parser.add_argument("--dry-run", action="store_true", help="Print the posts without sending or saving")
     args = parser.parse_args()
 
@@ -104,6 +146,11 @@ def main():
     posts = add_images(posts, config["brand"], out, args.count)
     if not posts:
         raise SystemExit("None of today's stories had a usable photo.")
+    news_links = {post["story"]["link"] for post in posts}
+    rest = [story for story in stories if story["link"] not in news_links]
+    if args.debates and rest:
+        debates = write_debates(rest, config["ai"]["model"], args.debates + 2)
+        posts += add_images(debates, config["brand"], out, args.debates, first_number=len(posts) + 1)
     (out / "posts.json").write_text(json.dumps(posts, indent=2))
     for i, post in enumerate(posts, 1):
         print(f"\n===== Post {i} ({post['story']['source']}: {post['story']['title']}) =====")

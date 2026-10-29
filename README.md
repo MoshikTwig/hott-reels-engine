@@ -15,7 +15,9 @@ Every day at 05:00 UTC, `.github/workflows/news-posts.yml` reads the feeds, pick
 - A branded 1080x1350 image: the article's own main photo, a big headline with the wrestler's name in gold, a BREAKING / REPORT / RUMOR tag, the logo, and the photo source. Stories without a usable photo are skipped.
 - One caption for Facebook and Instagram: a capitals headline, the facts (rumors labeled), a question for the comments, the source's name and hashtags starting with `#HeadOfTheTableTalk`. No links to other websites, since Facebook shows posts that send people away to fewer people.
 
-The image and caption arrive in Telegram ready to post.
+After the news, it adds one **Table Debate** post: a hot take or question about another of the day's stories, on that story's own photo, with the page's opinion and a question for fans.
+
+The images and captions arrive in Telegram ready to post.
 
 Run it by hand from **Actions → Daily news posts**. Tick **dry_run** to only make the posts, saved under the run's **Artifacts**.
 
