@@ -1,0 +1,50 @@
+name: Daily news posts
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # every day at 05:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print the posts in the log, don't send or save
+        type: boolean
+        default: false
+      count:
+        description: How many posts to write
+        default: "3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: state-writes
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Write the posts
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m engine.news --count "${{ inputs.count || '3' }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Remember which stories were used
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "reels-engine"
+          git config user.email "reels-engine@users.noreply.github.com"
+          git add state/
+          git diff --cached --quiet || git commit -m "Record used news stories"
+          git pull --rebase -q && git push

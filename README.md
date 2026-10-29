@@ -8,7 +8,13 @@ Makes a branded, original 30 to 40 second vertical Reel every day, for free:
 4. Finds real, freely licensed photos of the wrestlers on Wikimedia Commons (credited in the caption), adds slow zoom, a gold headline bar and word-by-word captions, and renders the video with FFmpeg.
 5. Sends the Reel and caption to Telegram for review. Nothing is posted automatically yet.
 
-## Formats
+## Daily news posts
+
+Every day at 05:00 UTC, `.github/workflows/news-posts.yml` reads the feeds, picks the 3 stories fans will care about most, and writes a Facebook post for each: a capitals headline, the facts (rumors labeled), a question for the comments, the article link (so Facebook shows the site's own photo), and hashtags starting with `#HeadOfTheTableTalk`. The posts arrive in Telegram ready to copy.
+
+Run it by hand from **Actions → Daily news posts**. Tick **dry_run** to only print the posts in the log.
+
+## Reel formats
 
 | Format | When | What |
 | --- | --- | --- |
