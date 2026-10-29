@@ -35,9 +35,13 @@ def _send_to_make(post, image_url, test=False):
 
 def check():
     if os.environ.get("MAKE_WEBHOOK_URL"):
-        response = requests.get(os.environ["MAKE_WEBHOOK_URL"], timeout=60)
-        print(f"Make webhook answered {response.status_code}: {response.text[:200]}")
-        notify.send_text(f"Make webhook answered {response.status_code}.")
+        # A sample with every field, so Make learns the data structure while its webhook is listening.
+        # Send it before the scenario is switched on, or it gets posted.
+        repo = os.environ.get("GITHUB_REPOSITORY", "MoshikTwig/hott-reels-engine")
+        sample = {"caption": "Test from the Head of the Table Talk engine", "image_headline": "TEST"}
+        _send_to_make(sample, f"https://raw.githubusercontent.com/{repo}/main/assets/logo.png", test=True)
+        print("Sent a sample post to the Make webhook.")
+        notify.send_text("Sent a sample to Make. It should now show image_url, caption, headline and test.")
         return
     page, instagram = meta.accounts(meta.page_token())
     print(f"Facebook Page: {page['name']} ({page['id']})")
