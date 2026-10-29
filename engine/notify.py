@@ -25,8 +25,20 @@ def send_for_review(video_path, caption, label):
                   timeout=60).raise_for_status()
 
 
-def send_posts(posts):
-    """Send each finished post: the image, then its caption on its own so it copies cleanly."""
+def send_text(text):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("Telegram secrets not set, skipping message.")
+        return
+    requests.post(f"https://api.telegram.org/bot{token}/sendMessage", timeout=60, data={
+        "chat_id": chat_id, "text": text[:4096], "disable_web_page_preview": "true",
+    }).raise_for_status()
+
+
+def send_posts(posts, schedule=None):
+    """Send each finished post: the image, then its caption on its own so it copies cleanly.
+    With a schedule, the posts publish themselves and this is only so the owner sees them."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
@@ -39,8 +51,12 @@ def send_posts(posts):
             "chat_id": chat_id, "text": text[:4096], "disable_web_page_preview": "true",
         }).raise_for_status()
 
-    say(f"Today's {len(posts)} posts are ready. For each one: save the image and copy the text under it. "
-        "The same text works on Facebook and Instagram.")
+    if schedule:
+        say(f"Today's {len(posts)} posts. They go live on Facebook and Instagram by themselves at "
+            f"{', '.join(schedule[:len(posts)])} (Israel time). Nothing to do, this is so you see them first.")
+    else:
+        say(f"Today's {len(posts)} posts are ready. For each one: save the image and copy the text under it. "
+            "The same text works on Facebook and Instagram.")
     for i, post in enumerate(posts, 1):
         with open(post["image"], "rb") as image:
             requests.post(f"{base}/sendPhoto", timeout=120, files={"photo": image}, data={
