@@ -31,6 +31,13 @@ voice:
 ai:
   model: gemini-flash-latest
 
+# Daily posts go live on their own once the META_PAGE_TOKEN secret is set.
+# The times only label the Telegram message; the workflows' cron lines set them
+# (05:00, 09:00, 13:00 and 17:00 UTC).
+publish:
+  enabled: true
+  slots: ["07:00", "11:00", "15:00", "19:00"]
+
 video:
   width: 1080
   height: 1920

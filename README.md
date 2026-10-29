@@ -19,6 +19,10 @@ After the news, it adds one **Table Debate** post: a hot take or question about 
 
 The images and captions arrive in Telegram ready to post.
 
+### Automatic posting
+
+With the `META_PAGE_TOKEN` secret set (a never-expiring Page token from a Meta developer app, see the setup guide), the posts go live by themselves: the daily run publishes post 1 to the Facebook Page and its linked Instagram account and queues the rest on the `queue` branch; `.github/workflows/publish.yml` publishes one more at 09:00, 13:00 and 17:00 UTC. Telegram gets a message as each goes live. Run **Actions → Publish queued posts** with **check_only** ticked to test the token without posting. Without the secret, posts only go to Telegram.
+
 Run it by hand from **Actions → Daily news posts**. Tick **dry_run** to only make the posts, saved under the run's **Artifacts**.
 
 ## Reel formats

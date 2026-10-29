@@ -22,6 +22,8 @@ concurrency:
 jobs:
   news:
     runs-on: ubuntu-latest
+    env:
+      HAS_META: ${{ secrets.META_PAGE_TOKEN != '' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -38,10 +40,12 @@ jobs:
             https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf
 
       - name: Write the posts
+        id: write
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
         run: python -m engine.news --count "${{ inputs.count || '3' }}" ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Save the posts
@@ -51,14 +55,6 @@ jobs:
           path: out/*-news/
           retention-days: 14
 
-      - name: Share a preview on the previews branch
-        run: |
-          cd out
-          git init -q -b previews
-          git add .
-          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "News posts preview"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" previews
-
       - name: Remember which stories were used
         if: ${{ !inputs.dry_run }}
         run: |
@@ -67,3 +63,29 @@ jobs:
           git add state/
           git diff --cached --quiet || git commit -m "Record used news stories"
           git pull --rebase -q && git push
+
+      - name: Publish the first post
+        if: ${{ !inputs.dry_run && env.HAS_META == 'true' }}
+        env:
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m engine.publish --queue out
+
+      - name: Queue the rest for later today
+        if: ${{ !cancelled() && steps.write.outcome == 'success' && !inputs.dry_run && env.HAS_META == 'true' }}
+        run: |
+          cp -r out "$RUNNER_TEMP/queue" && cd "$RUNNER_TEMP/queue"
+          git init -q -b queue
+          git add .
+          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "Today's posts"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" queue
+
+      - name: Share a preview on the previews branch
+        if: ${{ !cancelled() && steps.write.outcome == 'success' }}
+        run: |
+          cd out
+          git init -q -b previews
+          git add .
+          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "News posts preview"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" previews

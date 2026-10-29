@@ -7,6 +7,7 @@ python -m engine.news --dry-run    # only make them, in out/<date>-news/
 import argparse
 import datetime as dt
 import json
+import os
 import re
 from pathlib import Path
 
@@ -158,7 +159,9 @@ def main():
 
     if args.dry_run:
         return
-    notify.send_posts(posts)
+    publishing = config.get("publish", {})
+    auto = publishing.get("enabled") and os.environ.get("META_PAGE_TOKEN")
+    notify.send_posts(posts, publishing.get("slots") if auto else None)
     for post in posts:
         feeds.mark_used(post["story"]["link"])
 

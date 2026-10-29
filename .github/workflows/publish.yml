@@ -1,0 +1,54 @@
+name: Publish queued posts
+
+on:
+  schedule:
+    - cron: "0 9,13,17 * * *"   # 11:00, 15:00 and 19:00 Israel time (winter)
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: Only test the Meta connection, post nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: state-writes
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Test the connection
+        if: ${{ inputs.check_only }}
+        run: python -m engine.publish --check
+
+      - name: Publish the next post
+        if: ${{ !inputs.check_only }}
+        run: |
+          git fetch -q origin queue || { echo "Nothing queued yet."; exit 0; }
+          git worktree add -q queue FETCH_HEAD
+          python -m engine.publish --queue queue
+
+      - name: Remember what was published
+        if: ${{ !cancelled() && !inputs.check_only && hashFiles('queue/**/posts.json') != '' }}
+        run: |
+          cd queue
+          git add -A
+          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "Published a post" || exit 0
+          git push -q origin HEAD:queue
