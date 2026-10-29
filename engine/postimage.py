@@ -107,7 +107,7 @@ def _photo_layer(photo):
     return backdrop
 
 
-def render_post(photo, headline, highlight, tag, credit, brand, out_path):
+def render_post(photo, headline, highlight, tag, credit, brand, out_path, kicker=""):
     gold, white = _hex(brand["gold"]), _hex(brand["white"])
     img = _shade(_photo_layer(photo))
     draw = ImageDraw.Draw(img)
@@ -122,7 +122,8 @@ def render_post(photo, headline, highlight, tag, credit, brand, out_path):
     words = headline.upper().split()
     font, lines = _headline_lines(draw, words, WIDTH - 2 * MARGIN)
     line_height = font.size * 1.08
-    y = HEIGHT - 200 - len(lines) * line_height
+    kicker_room = 86 if kicker else 0
+    y = HEIGHT - 200 - kicker_room - len(lines) * line_height
     draw.rectangle((MARGIN, y - 34, MARGIN + 150, y - 24), fill=gold)
     space = draw.textlength(" ", font=font)
     for line in lines:
@@ -132,6 +133,8 @@ def render_post(photo, headline, highlight, tag, credit, brand, out_path):
             draw.text((x, y), word, font=font, fill=color)
             x += draw.textlength(word, font=font) + space
         y += line_height
+    if kicker:
+        draw.text((MARGIN, y + 16), kicker.upper(), font=_font(56), fill=gold)
 
     # The logo lives in the footer, so it never covers a face in the photo.
     logo = Image.open(LOGO).convert("RGBA")
