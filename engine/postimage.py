@@ -86,9 +86,30 @@ def _headline_lines(draw, words, max_width, max_lines=3):
     return font, lines
 
 
+def _photo_layer(photo):
+    """Tall photos fill the frame. Wide article photos (usually 16:9) would lose half their width that way,
+    so they sit full width at the top over a blurred copy, and fade into it."""
+    photo = photo.crop((3, 3, photo.width - 3, photo.height - 3))  # some sites add a thin border
+    if photo.width / photo.height < 1.2:
+        return _cover(photo, WIDTH, HEIGHT, focus_y=0.3)
+    backdrop = _cover(photo, WIDTH, HEIGHT).filter(ImageFilter.GaussianBlur(40))
+    backdrop = Image.blend(backdrop, Image.new("RGB", (WIDTH, HEIGHT), (8, 8, 7)), 0.55)
+    height = 760
+    scaled = photo.resize((max(WIDTH, round(photo.width * height / photo.height)), height), Image.LANCZOS)
+    if scaled.width == WIDTH:
+        scaled = photo.resize((WIDTH, round(photo.height * WIDTH / photo.width)), Image.LANCZOS)
+    left = (scaled.width - WIDTH) // 2
+    scaled = scaled.crop((left, 0, left + WIDTH, scaled.height))
+    fade = Image.new("L", scaled.size, 255)
+    for y in range(scaled.height - 220, scaled.height):
+        ImageDraw.Draw(fade).line((0, y, WIDTH, y), fill=int(255 * (scaled.height - y) / 220))
+    backdrop.paste(scaled, (0, 0), fade)
+    return backdrop
+
+
 def render_post(photo, headline, highlight, tag, credit, brand, out_path):
     gold, white = _hex(brand["gold"]), _hex(brand["white"])
-    img = _shade(_cover(photo, WIDTH, HEIGHT, focus_y=0.3))
+    img = _shade(_photo_layer(photo))
     draw = ImageDraw.Draw(img)
 
     logo = Image.open(LOGO).convert("RGBA")
