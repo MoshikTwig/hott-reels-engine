@@ -23,7 +23,7 @@ jobs:
   news:
     runs-on: ubuntu-latest
     env:
-      HAS_META: ${{ secrets.META_PAGE_TOKEN != '' }}
+      AUTO_POST: ${{ secrets.META_PAGE_TOKEN != '' || secrets.MAKE_WEBHOOK_URL != '' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -46,6 +46,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
         run: python -m engine.news --count "${{ inputs.count || '3' }}" ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Save the posts
@@ -64,18 +65,29 @@ jobs:
           git diff --cached --quiet || git commit -m "Record used news stories"
           git pull --rebase -q && git push
 
+      # The queue goes up first: Make fetches each image from its public URL on that branch.
+      - name: Queue today's posts
+        if: ${{ !cancelled() && steps.write.outcome == 'success' && !inputs.dry_run && env.AUTO_POST == 'true' }}
+        run: |
+          rm -rf "$RUNNER_TEMP/queue" && cp -r out "$RUNNER_TEMP/queue" && cd "$RUNNER_TEMP/queue" && rm -rf .git
+          git init -q -b queue
+          git add .
+          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "Today's posts"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" queue
+
       - name: Publish the first post
-        if: ${{ !inputs.dry_run && env.HAS_META == 'true' }}
+        if: ${{ !cancelled() && steps.write.outcome == 'success' && !inputs.dry_run && env.AUTO_POST == 'true' }}
         env:
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m engine.publish --queue out
 
-      - name: Queue the rest for later today
-        if: ${{ !cancelled() && steps.write.outcome == 'success' && !inputs.dry_run && env.HAS_META == 'true' }}
+      - name: Remember that it was published
+        if: ${{ !cancelled() && steps.write.outcome == 'success' && !inputs.dry_run && env.AUTO_POST == 'true' }}
         run: |
-          cp -r out "$RUNNER_TEMP/queue" && cd "$RUNNER_TEMP/queue"
+          rm -rf "$RUNNER_TEMP/queue" && cp -r out "$RUNNER_TEMP/queue" && cd "$RUNNER_TEMP/queue" && rm -rf .git
           git init -q -b queue
           git add .
           git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "Today's posts"
