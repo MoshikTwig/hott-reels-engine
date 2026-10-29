@@ -51,8 +51,7 @@ jobs:
           path: out/*-news/
           retention-days: 14
 
-      - name: Share a preview of a test run
-        if: ${{ inputs.dry_run }}
+      - name: Share a preview on the previews branch
         run: |
           cd out
           git init -q -b previews
