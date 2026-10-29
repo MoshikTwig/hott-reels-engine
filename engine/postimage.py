@@ -62,7 +62,7 @@ def story_photo(story):
 
 
 def _shade(img):
-    """Darken the top for the logo and the bottom half for the headline."""
+    """Darken the top edge for the tag and the bottom half for the headline and footer."""
     mask = Image.new("L", (1, HEIGHT))
     for y in range(HEIGHT):
         top = max(0, 150 - y) * 1.0
@@ -112,15 +112,6 @@ def render_post(photo, headline, highlight, tag, credit, brand, out_path):
     img = _shade(_photo_layer(photo))
     draw = ImageDraw.Draw(img)
 
-    logo = Image.open(LOGO).convert("RGBA")
-    logo = logo.resize((170, round(logo.height * 170 / logo.width)), Image.LANCZOS)
-    # A tight dark shadow keeps the gold logo readable on bright photos.
-    pad = 30
-    shadow = ImageOps.expand(logo.getchannel("A"), pad, 0)
-    shadow = shadow.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(10)).point(lambda a: int(a * 0.85))
-    img.paste((0, 0, 0), (WIDTH - 170 - 40 - pad, 36 - pad), shadow)
-    img.paste(logo, (WIDTH - 170 - 40, 36), logo)
-
     if tag:
         font = _font(46)
         width = draw.textlength(tag, font=font)
@@ -131,7 +122,7 @@ def render_post(photo, headline, highlight, tag, credit, brand, out_path):
     words = headline.upper().split()
     font, lines = _headline_lines(draw, words, WIDTH - 2 * MARGIN)
     line_height = font.size * 1.08
-    y = HEIGHT - 150 - len(lines) * line_height
+    y = HEIGHT - 200 - len(lines) * line_height
     draw.rectangle((MARGIN, y - 34, MARGIN + 150, y - 24), fill=gold)
     space = draw.textlength(" ", font=font)
     for line in lines:
@@ -142,8 +133,13 @@ def render_post(photo, headline, highlight, tag, credit, brand, out_path):
             x += draw.textlength(word, font=font) + space
         y += line_height
 
-    draw.line((MARGIN, HEIGHT - 104, WIDTH - MARGIN, HEIGHT - 104), fill=gold, width=3)
-    draw.text((MARGIN, HEIGHT - 84), brand["name"].upper(), font=_font(40), fill=gold)
+    # The logo lives in the footer, so it never covers a face in the photo.
+    logo = Image.open(LOGO).convert("RGBA")
+    logo = logo.resize((round(logo.width * 150 / logo.height), 150), Image.LANCZOS)
+    img.paste(logo, (MARGIN - 6, HEIGHT - 176), logo)
+    left = MARGIN + logo.width + 18
+    draw.line((left, HEIGHT - 110, WIDTH - MARGIN, HEIGHT - 110), fill=gold, width=3)
+    draw.text((left, HEIGHT - 92), brand["name"].upper(), font=_font(40), fill=gold)
     small = ImageFont.truetype(SMALL_FONT, 22) if os.path.exists(SMALL_FONT) else _font(24)
     text = f"Photo: {credit}"
     draw.text((WIDTH - MARGIN - draw.textlength(text, font=small), HEIGHT - 70), text, font=small,
