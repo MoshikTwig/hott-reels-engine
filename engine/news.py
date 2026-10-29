@@ -7,6 +7,7 @@ python -m engine.news --dry-run    # only make them, in out/<date>-news/
 import argparse
 import datetime as dt
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -14,10 +15,13 @@ import yaml
 from engine import feeds, notify, postimage, writer
 
 ROOT = Path(__file__).resolve().parent.parent
+# Multi-topic articles: their main photo rarely matches any single story in them.
+ROUNDUP = re.compile(r"round-?up|news and notes|notes:|recap|live coverage|rumor mill", re.I)
 
 NEWS_PROMPT = """You run the Facebook page Head of the Table Talk, a wrestling news and discussion page.
 From the stories below, pick the {count} that wrestling fans will care about most, best first, and write one
-post for each. Never pick two stories about the same event.
+post for each. Never pick two stories about the same event. Skip roundups and digests that cover several
+topics, because their photo won't match the story you write about.
 
 Rules for every post:
 - English only. Punchy, emotional, easy to read on a phone.
@@ -90,7 +94,7 @@ def main():
     args = parser.parse_args()
 
     config = yaml.safe_load((ROOT / "config.yaml").read_text())
-    stories = feeds.fresh_stories(config["feeds"], limit=25)
+    stories = [s for s in feeds.fresh_stories(config["feeds"], limit=30) if not ROUNDUP.search(s["title"])][:25]
     if not stories:
         raise SystemExit("No fresh stories in the feeds right now.")
     print(f"{len(stories)} fresh stories found.")
