@@ -30,7 +30,7 @@ Rules for every post:
   dates, quotes or numbers. Summaries often stop mid-sentence with [...]: never guess how they continue.
 - If the story is a report or rumor and not confirmed, say so clearly with "Reportedly" or "Rumor:".
 - Then one line with a direct question that makes fans want to comment.
-- Do not include a link; it is added after your text.
+- Never include a link or a website address.
 - Last line: 4 or 5 hashtags. The first is exactly #HeadOfTheTableTalk.
 
 Each post also gets a big headline printed on its photo:
@@ -58,10 +58,10 @@ def write_posts(stories, model, count):
         body, _, tags = item["post"].strip().rpartition("\n")
         if "#" not in tags:
             body, tags = item["post"].strip(), ""
-        credit = postimage.source_name(story["link"])
+        credit = story["source"] or postimage.source_name(story["link"])
         posts.append({
-            "facebook": writer.hashtag_first(f"{body.strip()}\n\n\U0001F449 {story['link']}\n\n{tags.strip()}"),
-            "instagram": writer.hashtag_first(f"{body.strip()}\n\nSource: {credit}\n\n{tags.strip()}"),
+            # No links: Facebook pushes posts that send people away down in the feed.
+            "caption": writer.hashtag_first(f"{body.strip()}\n\nSource: {credit}\n\n{tags.strip()}"),
             "image_headline": item.get("image_headline") or story["title"],
             "highlight": item.get("highlight", ""),
             "tag": item.get("tag", "").upper(),
@@ -107,7 +107,7 @@ def main():
     (out / "posts.json").write_text(json.dumps(posts, indent=2))
     for i, post in enumerate(posts, 1):
         print(f"\n===== Post {i} ({post['story']['source']}: {post['story']['title']}) =====")
-        print(f"Image: {post['image']}\n--- Facebook ---\n{post['facebook']}\n--- Instagram ---\n{post['instagram']}")
+        print(f"Image: {post['image']}\n{post['caption']}")
 
     if args.dry_run:
         return

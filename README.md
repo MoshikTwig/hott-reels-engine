@@ -13,10 +13,9 @@ Makes a branded, original 30 to 40 second vertical Reel every day, for free:
 Every day at 05:00 UTC, `.github/workflows/news-posts.yml` reads the feeds, picks the 3 stories fans will care about most, and makes a finished post for each:
 
 - A branded 1080x1350 image: the article's own main photo, a big headline with the wrestler's name in gold, a BREAKING / REPORT / RUMOR tag, the logo, and the photo source. Stories without a usable photo are skipped.
-- A Facebook caption: a capitals headline, the facts (rumors labeled), a question for the comments, the article link and hashtags starting with `#HeadOfTheTableTalk`.
-- An Instagram caption: the same without the link (links don't work in Instagram captions), naming the source.
+- One caption for Facebook and Instagram: a capitals headline, the facts (rumors labeled), a question for the comments, the source's name and hashtags starting with `#HeadOfTheTableTalk`. No links to other websites, since Facebook shows posts that send people away to fewer people.
 
-The image and both captions arrive in Telegram ready to post.
+The image and caption arrive in Telegram ready to post.
 
 Run it by hand from **Actions → Daily news posts**. Tick **dry_run** to only make the posts, saved under the run's **Artifacts**.
 
