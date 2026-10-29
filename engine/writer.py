@@ -111,11 +111,11 @@ def _generate(model, key, prompt, attempts=3):
         time.sleep(20 * attempt)
 
 
-def write_script(fmt, material, model):
+def ask_json(prompt, model):
+    """Send a prompt to Gemini and return its JSON answer."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise SystemExit("GEMINI_API_KEY is not set. Add it as a GitHub secret.")
-    prompt = f"{BRAND_RULES}\n\n{FORMAT_BRIEFS[fmt]}\n\n{material}"
     model = os.environ.get("GEMINI_MODEL", model)
     response = _generate(model, key, prompt)
     if response.status_code == 404:
@@ -124,22 +124,29 @@ def write_script(fmt, material, model):
         response = _generate(fallback, key, prompt)
     if not response.ok:
         raise SystemExit(f"Gemini API error {response.status_code}: {response.text[:500]}")
-    text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-    return enforce_rules(json.loads(text))
+    return json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+
+
+def write_script(fmt, material, model):
+    return enforce_rules(ask_json(f"{BRAND_RULES}\n\n{FORMAT_BRIEFS[fmt]}\n\n{material}", model))
+
+
+def hashtag_first(text, hashtag="#HeadOfTheTableTalk"):
+    """Make sure the brand hashtag is the first hashtag in the text."""
+    text = text.strip()
+    tags = re.findall(r"#\w+", text)
+    if tags and tags[0] == hashtag:
+        return text
+    text = re.sub(re.escape(hashtag) + r"\b\s*", "", text).rstrip()
+    first_tag = re.search(r"#\w+", text)
+    if first_tag:
+        return text[: first_tag.start()] + hashtag + " " + text[first_tag.start():]
+    return text + "\n" + hashtag
 
 
 def enforce_rules(script, hashtag="#HeadOfTheTableTalk"):
     """Fix the rules the brand never bends, whatever the model returned."""
-    caption = script.get("caption", "").strip()
-    tags = re.findall(r"#\w+", caption)
-    if not tags or tags[0] != hashtag:
-        caption = re.sub(re.escape(hashtag) + r"\b\s*", "", caption).rstrip()
-        first_tag = re.search(r"#\w+", caption)
-        if first_tag:
-            caption = caption[: first_tag.start()] + hashtag + " " + caption[first_tag.start():]
-        else:
-            caption += "\n" + hashtag
-    script["caption"] = caption
+    script["caption"] = hashtag_first(script.get("caption", ""), hashtag)
     for segment in script["segments"]:
         if segment.get("stamp") not in ("CONFIRMED", "RUMOR"):
             segment["stamp"] = None

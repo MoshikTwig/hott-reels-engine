@@ -23,3 +23,20 @@ def send_for_review(video_path, caption, label):
     response.raise_for_status()
     requests.post(f"{base}/sendMessage", data={"chat_id": chat_id, "text": caption[:4096]},
                   timeout=60).raise_for_status()
+
+
+def send_posts(posts):
+    """Send each news post as its own Telegram message, with the article preview, ready to copy."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("Telegram secrets not set, skipping review messages.")
+        return
+    base = f"https://api.telegram.org/bot{token}"
+    requests.post(f"{base}/sendMessage", timeout=60, data={
+        "chat_id": chat_id, "text": f"Today's {len(posts)} news posts. Copy each one into Facebook:",
+    }).raise_for_status()
+    for post in posts:
+        requests.post(f"{base}/sendMessage", timeout=60, data={
+            "chat_id": chat_id, "text": post["text"][:4096],
+        }).raise_for_status()
