@@ -27,7 +27,7 @@ Rules for every post:
 - English only. Punchy, emotional, easy to read on a phone.
 - Line 1 is the headline in CAPITALS between two matching emojis, for example: \U0001F525 CM PUNK JUST CHANGED EVERYTHING \U0001F525
 - Then 2 to 4 short lines with the facts. Only use facts from the story given. Never invent names,
-  dates, quotes or numbers.
+  dates, quotes or numbers. Summaries often stop mid-sentence with [...]: never guess how they continue.
 - If the story is a report or rumor and not confirmed, say so clearly with "Reportedly" or "Rumor:".
 - Then one line with a direct question that makes fans want to comment.
 - Do not include a link; it is added after your text.
