@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Only print the posts in the log, don't send or save
+        description: Only make the posts (saved under Artifacts), don't send them
         type: boolean
         default: false
       count:
@@ -31,7 +31,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - run: pip install -r requirements.txt
+      - name: Install tools
+        run: |
+          pip install -r requirements.txt
+          curl -sSfL -o assets/fonts/Anton-Regular.ttf \
+            https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf
 
       - name: Write the posts
         env:
@@ -39,6 +43,22 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m engine.news --count "${{ inputs.count || '3' }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Save the posts
+        uses: actions/upload-artifact@v4
+        with:
+          name: news-posts
+          path: out/*-news/
+          retention-days: 14
+
+      - name: Share a preview of a test run
+        if: ${{ inputs.dry_run }}
+        run: |
+          cd out
+          git init -q -b previews
+          git add .
+          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "News posts preview"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" previews
 
       - name: Remember which stories were used
         if: ${{ !inputs.dry_run }}
