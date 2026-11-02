@@ -76,7 +76,7 @@ def webhook_url():
     for hook in make.hooks(make.team_id()):
         if hook["name"] == HOOK_NAME:
             if os.environ.get("GITHUB_ACTIONS"):
-                print(f"::add-mask::{hook['url']}")  # keep it out of the public logs
+                print(f"::add-mask::{hook['url']}", flush=True)  # keep it out of the public logs
             return hook["url"]
     return None
 
@@ -207,17 +207,16 @@ def build(activate=True):
     instagram_conn = _pick_connection(connections, "instagram", fallback=facebook_ids[-1] if facebook_ids else None)
 
     hook = next((h for h in make.hooks(team) if h["name"] == HOOK_NAME), None)
+    if hook and not hook.get("scenarioId"):
+        # Not in use yet: replace it, so an address that ever showed up in a log is never the live one.
+        make.call("DELETE", f"/hooks/{hook['id']}", params={"confirmed": "true"})
+        hook = None
     if not hook:
         hook = make.call("POST", "/hooks", json={"name": HOOK_NAME, "teamId": str(team), "typeName": "gateway-webhook",
                                                  "method": False, "headers": False, "stringify": False})["hook"]
         print(f"Created webhook {hook['id']}.")
     if os.environ.get("GITHUB_ACTIONS"):
-        print(f"::add-mask::{hook['url']}")
-
-    # Teach the webhook the post's fields with a test sample, which the filter keeps off the Page.
-    sample = {"image_url": "https://raw.githubusercontent.com/MoshikTwig/hott-reels-engine/main/assets/logo.png",
-              "caption": "Test from the Head of the Table Talk engine", "headline": "TEST", "test": True}
-    requests.post(hook["url"], json=sample, timeout=60).raise_for_status()
+        print(f"::add-mask::{hook['url']}", flush=True)
 
     existing = [s for s in make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]
                 if s["name"] == SCENARIO_NAME]
@@ -234,6 +233,15 @@ def build(activate=True):
                              json={**body, "teamId": team})["scenario"]
         print(f"Created scenario {scenario['id']}.")
     link = f"https://{make.zone}/{team}/scenarios/{scenario['id']}/edit"
+
+    # Teach the webhook the post's fields with a test sample; the filter keeps it off the Page.
+    sample = {"image_url": "https://raw.githubusercontent.com/MoshikTwig/hott-reels-engine/main/assets/logo.png",
+              "caption": "Test from the Head of the Table Talk engine", "headline": "TEST", "test": True}
+    try:
+        answer = requests.post(hook["url"], json=sample, timeout=60)
+        print(f"Test sample sent to the webhook: HTTP {answer.status_code}")
+    except requests.RequestException:
+        print("Test sample could not be sent to the webhook.")
     if not (page_id and account_id):
         print("The Page and Instagram account still need picking in Make's editor, so the scenario stays off.")
         notify.send_text("Make scenario is built. Open it, click the Facebook module and pick the Page, click the "
