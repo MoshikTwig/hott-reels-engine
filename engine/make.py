@@ -148,36 +148,47 @@ def discover():
             print(f"  could not read templates: {error}")
 
 
-def _pick_connection(connections, app):
-    matches = [c for c in connections if (c.get("accountName") or "").startswith(app)]
-    if not matches:
-        raise MakeError(f"No {app} connection in Make. Connect it in Make first (Connections > Create).")
-    return matches[0]["id"]
+def _pick_connection(connections, word, fallback=None):
+    matches = [c["id"] for c in connections if word in (c.get("accountName") or "")]
+    if matches:
+        return matches[0]
+    if fallback:
+        return fallback
+    raise MakeError(f"No {word} connection in Make yet. Create it in Make under Connections.")
 
 
-def blueprint(hook_id, facebook_conn, instagram_conn):
-    """Webhook -> Facebook photo post -> Instagram photo post. Test samples (test=true) stop at the filter."""
+def _chosen_ids(make, scenario_id):
+    """The Page and Instagram account picked in Make's editor, so a rebuild keeps them."""
+    flow = make.call("GET", f"/scenarios/{scenario_id}/blueprint")["response"]["blueprint"]["flow"]
+    ids = {}
+    for module in _walk(flow):
+        mapper = module.get("mapper") or {}
+        if mapper.get("page_id"):
+            ids["page_id"] = mapper["page_id"]
+        if mapper.get("accountId"):
+            ids["accountId"] = mapper["accountId"]
+    return ids
+
+
+def blueprint(hook_id, facebook_conn, instagram_conn, page_id="", account_id=""):
+    """Webhook -> Facebook photo post -> Instagram photo post. Test samples (test=true) stop at the filter.
+
+    Module names and fields as Make exports them (facebook-pages:CreatePostWithPhotos v6,
+    instagram-business:CreatePostPhoto v1).
+    """
     not_a_test = {"name": "Real posts only", "conditions": [[{"a": "{{1.test}}", "o": "boolean:equal", "b": "false"}]]}
-    spec = json.loads(os.environ.get("MAKE_MODULES") or "{}")
-    facebook = spec.get("facebook", {"module": f"{FACEBOOK_APP}:CreatePostWithPhotos", "version": 1, "mapper": {
-        "page_id": os.environ.get("FACEBOOK_PAGE_ID", ""),
-        "photos": [{"url": "{{1.image_url}}"}],
-        "message": "{{1.caption}}",
-    }})
-    instagram = spec.get("instagram", {"module": f"{INSTAGRAM_APP}:CreatePostPhoto", "version": 1, "mapper": {
-        "accountId": os.environ.get("INSTAGRAM_ACCOUNT_ID", ""),
-        "image_url": "{{1.image_url}}",
-        "caption": "{{1.caption}}",
-    }})
     flow = [
         {"id": 1, "module": "gateway:CustomWebHook", "version": 1,
          "parameters": {"hook": hook_id, "maxResults": 1}, "mapper": {},
          "metadata": {"designer": {"x": 0, "y": 0}}},
-        {"id": 2, "module": facebook["module"], "version": facebook["version"],
-         "parameters": {"__IMTCONN__": facebook_conn}, "mapper": facebook["mapper"], "filter": not_a_test,
-         "metadata": {"designer": {"x": 300, "y": 0}}},
-        {"id": 3, "module": instagram["module"], "version": instagram["version"],
-         "parameters": {"__IMTCONN__": instagram_conn}, "mapper": instagram["mapper"],
+        {"id": 2, "module": f"{FACEBOOK_APP}:CreatePostWithPhotos", "version": 6,
+         "parameters": {"__IMTCONN__": facebook_conn},
+         "mapper": {"page_id": page_id, "photos": [{"url": "{{1.image_url}}", "type": "url"}],
+                    "message": "{{1.caption}}"},
+         "filter": not_a_test, "metadata": {"designer": {"x": 300, "y": 0}}},
+        {"id": 3, "module": f"{INSTAGRAM_APP}:CreatePostPhoto", "version": 1,
+         "parameters": {"__IMTCONN__": instagram_conn},
+         "mapper": {"accountId": account_id, "image_url": "{{1.image_url}}", "caption": "{{1.caption}}"},
          "metadata": {"designer": {"x": 600, "y": 0}}},
     ]
     return {"name": SCENARIO_NAME, "flow": flow, "metadata": {
@@ -189,8 +200,8 @@ def build(activate=True):
     make = Make()
     team = make.team_id()
     connections = make.connections(team)
-    facebook_conn = _pick_connection(connections, FACEBOOK_APP)
-    instagram_conn = _pick_connection(connections, INSTAGRAM_APP)
+    facebook_conn = _pick_connection(connections, "facebook")
+    instagram_conn = _pick_connection(connections, "instagram", fallback=facebook_conn)
 
     hook = next((h for h in make.hooks(team) if h["name"] == HOOK_NAME), None)
     if not hook:
@@ -207,7 +218,10 @@ def build(activate=True):
 
     existing = [s for s in make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]
                 if s["name"] == SCENARIO_NAME]
-    body = {"blueprint": json.dumps(blueprint(hook["id"], facebook_conn, instagram_conn)),
+    chosen = _chosen_ids(make, existing[0]["id"]) if existing else {}
+    page_id = os.environ.get("FACEBOOK_PAGE_ID") or chosen.get("page_id", "")
+    account_id = os.environ.get("INSTAGRAM_ACCOUNT_ID") or chosen.get("accountId", "")
+    body = {"blueprint": json.dumps(blueprint(hook["id"], facebook_conn, instagram_conn, page_id, account_id)),
             "scheduling": json.dumps({"type": "immediately"})}
     if existing:
         scenario = make.call("PATCH", f"/scenarios/{existing[0]['id']}", json=body)["scenario"]
@@ -216,12 +230,17 @@ def build(activate=True):
         scenario = make.call("POST", "/scenarios", params={"confirmed": "true"},
                              json={**body, "teamId": team})["scenario"]
         print(f"Created scenario {scenario['id']}.")
+    link = f"https://{make.zone}/{team}/scenarios/{scenario['id']}/edit"
+    if not (page_id and account_id):
+        print("The Page and Instagram account still need picking in Make's editor, so the scenario stays off.")
+        notify.send_text("Make scenario is built. Open it, click the Facebook module and pick the Page, click the "
+                         f"Instagram module and pick the account, then Save:\n{link}")
+        return
     if activate:
         make.call("POST", f"/scenarios/{scenario['id']}/start")
         print("Scenario is on.")
     notify.send_text(f"Make scenario is built{' and switched on' if activate else ''}. "
-                     "Posts will now go to Facebook and Instagram through Make.")
-
+                     f"Posts now go to Facebook and Instagram through Make.\n{link}")
 
 def main():
     parser = argparse.ArgumentParser()
