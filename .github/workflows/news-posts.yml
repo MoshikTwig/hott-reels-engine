@@ -84,7 +84,9 @@ jobs:
           MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m engine.publish --queue out
+        run: |
+          sleep 45   # give GitHub's raw file server time to serve the image Make will fetch
+          python -m engine.publish --queue out
 
       - name: Remember that it was published
         if: ${{ !cancelled() && steps.write.outcome == 'success' && !inputs.dry_run && env.AUTO_POST == 'true' }}
