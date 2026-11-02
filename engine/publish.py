@@ -1,7 +1,7 @@
 """Publish the next post of today's queue to the Facebook Page and Instagram.
 
 Two ways, whichever secret is set:
-- MAKE_WEBHOOK_URL: hand the post to a Make.com scenario, which posts it with Make's own Meta connection.
+- MAKE_WEBHOOK_URL or MAKE_API_TOKEN: hand the post to a Make.com scenario, which posts it with Make's own Meta connection.
   Make needs the image at a public URL: the queue branch of this (public) repo.
 - META_PAGE_TOKEN: post directly through the Graph API with a Page token from a Meta developer app.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import requests
 
-from engine import meta, notify
+from engine import make, meta, notify
 
 
 def _image_url(date_dir, image_name):
@@ -26,7 +26,10 @@ def _image_url(date_dir, image_name):
 
 
 def _send_to_make(post, image_url, test=False):
-    response = requests.post(os.environ["MAKE_WEBHOOK_URL"], timeout=120, json={
+    url = make.webhook_url()
+    if not url:
+        raise meta.MetaError("No Make webhook yet. Run Actions > Set up Make.")
+    response = requests.post(url, timeout=120, json={
         "image_url": image_url, "caption": post["caption"], "headline": post["image_headline"], "test": test,
     })
     if not response.ok:
@@ -34,7 +37,7 @@ def _send_to_make(post, image_url, test=False):
 
 
 def check():
-    if os.environ.get("MAKE_WEBHOOK_URL"):
+    if make.enabled():
         # A sample with every field, so Make learns the data structure while its webhook is listening.
         # Send it before the scenario is switched on, or it gets posted.
         repo = os.environ.get("GITHUB_REPOSITORY", "MoshikTwig/hott-reels-engine")
@@ -66,7 +69,7 @@ def publish_next(queue_dir):
     image = today / Path(post["image"]).name
 
     errors = []
-    if os.environ.get("MAKE_WEBHOOK_URL"):
+    if make.enabled():
         try:
             _send_to_make(post, _image_url(today.name, image.name))
             post["sent_to_make"] = True

@@ -1,0 +1,41 @@
+name: Set up Make
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: discover = only look around, build = create the webhook and scenario and switch it on
+        type: choice
+        options: [discover, build]
+        default: discover
+
+permissions:
+  contents: read
+
+jobs:
+  make:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
+      MAKE_MODULES: ${{ vars.MAKE_MODULES }}
+      FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
+      INSTAGRAM_ACCOUNT_ID: ${{ vars.INSTAGRAM_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Look around Make
+        run: python -m engine.make discover
+
+      - name: Build and switch on the scenario
+        if: ${{ inputs.action == 'build' }}
+        run: python -m engine.make build

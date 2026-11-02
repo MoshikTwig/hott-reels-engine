@@ -23,6 +23,7 @@ jobs:
     env:
       META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
       MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+      MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
