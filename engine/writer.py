@@ -101,7 +101,7 @@ def _generate(model, key, prompt, attempts=5):
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
                 },
-                timeout=300,
+                timeout=120,
             )
         except requests.exceptions.RequestException as error:
             if attempt == attempts:
