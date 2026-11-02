@@ -253,13 +253,54 @@ def build(activate=True):
     notify.send_text(f"Make scenario is built{' and switched on' if activate else ''}. "
                      f"Posts now go to Facebook and Instagram through Make.\n{link}")
 
+def activate():
+    """Check what was picked in Make's editor, without changing it, then switch the scenario on."""
+    from engine import notify
+    make = Make()
+    team = make.team_id()
+    scenario = next((s for s in make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]
+                     if s["name"] == SCENARIO_NAME), None)
+    if not scenario:
+        raise MakeError("The scenario doesn't exist yet. Run build first.")
+    flow = make.call("GET", f"/scenarios/{scenario['id']}/blueprint")["response"]["blueprint"]["flow"]
+    problems = []
+    for module in _walk(flow):
+        name, mapper = module.get("module", ""), module.get("mapper") or {}
+        conn = (module.get("parameters") or {}).get("__IMTCONN__")
+        if name.startswith(FACEBOOK_APP):
+            print(f"Facebook module: connection {conn}, Page id {mapper.get('page_id') or 'NOT SET'}, "
+                  f"photo {mapper.get('photos')}, message {mapper.get('message')}, filter {bool(module.get('filter'))}")
+            if not mapper.get("page_id"):
+                problems.append("no Facebook Page picked")
+        elif name.startswith(INSTAGRAM_APP):
+            print(f"Instagram module: connection {conn}, account id {mapper.get('accountId') or 'NOT SET'}, "
+                  f"image {mapper.get('image_url')}, caption {mapper.get('caption')}")
+            if not mapper.get("accountId"):
+                problems.append("no Instagram account picked")
+        else:
+            print(f"{name}: {module.get('parameters')}")
+    if problems:
+        raise MakeError("Not switching on: " + ", ".join(problems))
+    if not scenario.get("isActive"):
+        make.call("POST", f"/scenarios/{scenario['id']}/start")
+    print("Scenario is on.")
+    notify.send_text("Auto-posting is ON. The Make scenario is running: each post now goes to the Facebook Page and "
+                     "Instagram at 07:00, 11:00, 15:00 and 19:00 (Israel time), and you'll get a message here "
+                     "every time one is sent.")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["discover", "build"])
+    parser.add_argument("action", choices=["discover", "build", "activate"])
     parser.add_argument("--no-activate", action="store_true")
     args = parser.parse_args()
     try:
-        discover() if args.action == "discover" else build(activate=not args.no_activate)
+        if args.action == "discover":
+            discover()
+        elif args.action == "activate":
+            activate()
+        else:
+            build(activate=not args.no_activate)
     except MakeError as error:
         print(f"Make error: {error}")
         sys.exit(1)

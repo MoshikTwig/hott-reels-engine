@@ -6,7 +6,7 @@ on:
       action:
         description: discover = only look around, build = create the webhook and scenario and switch it on
         type: choice
-        options: [discover, build]
+        options: [discover, build, activate]
         default: discover
 
 permissions:
@@ -40,3 +40,7 @@ jobs:
       - name: Build and switch on the scenario
         if: ${{ inputs.action == 'build' }}
         run: python -m engine.make build
+
+      - name: Check the picks and switch the scenario on
+        if: ${{ inputs.action == 'activate' }}
+        run: python -m engine.make activate
