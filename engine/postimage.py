@@ -2,12 +2,11 @@
 
 import html
 import io
-import os
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import requests
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from engine.render import LOGO, _cover, _font, _hex
 
@@ -16,11 +15,6 @@ MARGIN = 60
 MIN_PHOTO_WIDTH = 600
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                          "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"}
-SMALL_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
-
-def source_name(link):
-    return urlparse(link).netloc.removeprefix("www.")
 
 
 def _og_image(link):
@@ -107,7 +101,7 @@ def _photo_layer(photo):
     return backdrop
 
 
-def render_post(photo, headline, highlight, tag, credit, brand, out_path, kicker=""):
+def render_post(photo, headline, highlight, tag, brand, out_path, kicker=""):
     gold, white = _hex(brand["gold"]), _hex(brand["white"])
     img = _shade(_photo_layer(photo))
     draw = ImageDraw.Draw(img)
@@ -143,9 +137,5 @@ def render_post(photo, headline, highlight, tag, credit, brand, out_path, kicker
     left = MARGIN + logo.width + 18
     draw.line((left, HEIGHT - 110, WIDTH - MARGIN, HEIGHT - 110), fill=gold, width=3)
     draw.text((left, HEIGHT - 92), brand["name"].upper(), font=_font(40), fill=gold)
-    small = ImageFont.truetype(SMALL_FONT, 22) if os.path.exists(SMALL_FONT) else _font(24)
-    text = f"Photo: {credit}"
-    draw.text((WIDTH - MARGIN - draw.textlength(text, font=small), HEIGHT - 70), text, font=small,
-              fill=(190, 184, 172))
     img.save(out_path, quality=92)
     return out_path
