@@ -200,8 +200,11 @@ def build(activate=True):
     make = Make()
     team = make.team_id()
     connections = make.connections(team)
-    facebook_conn = _pick_connection(connections, "facebook")
-    instagram_conn = _pick_connection(connections, "instagram", fallback=facebook_conn)
+    # Both Facebook Pages and Instagram for Business (Facebook login) connections are type "facebook".
+    # The one made first is for the Page, the newest one for Instagram; the editor shows both to check.
+    facebook_ids = sorted(c["id"] for c in connections if c.get("accountName") == "facebook")
+    facebook_conn = facebook_ids[0] if facebook_ids else _pick_connection(connections, "facebook")
+    instagram_conn = _pick_connection(connections, "instagram", fallback=facebook_ids[-1] if facebook_ids else None)
 
     hook = next((h for h in make.hooks(team) if h["name"] == HOOK_NAME), None)
     if not hook:
