@@ -55,6 +55,7 @@ class Make:
         for org in self.call("GET", "/organizations")["organizations"]:
             teams = self.call("GET", "/teams", params={"organizationId": org["id"]})["teams"]
             if teams:
+                self.organization = org["id"]
                 return teams[0]["id"]
         raise MakeError("No Make team found.")
 
@@ -87,8 +88,8 @@ def enabled():
 def _template_modules(make, app):
     """Module names and fields from Make's public templates that use an app, so the blueprint matches Make."""
     found = {}
-    templates = make.call("GET", "/templates", params={"public": "true", "usedApps[]": app,
-                                                       "pg[limit]": 15})["templates"]
+    templates = make.call("GET", "/templates", params={"public": "true", "usedApps[]": app, "pg[limit]": 15,
+                                                       "organizationId": getattr(make, "organization", "")})["templates"]
     for template in templates:
         public_id = template.get("approvedId") or template.get("publishedId")
         try:
@@ -117,14 +118,25 @@ def discover():
     print(f"Zone: {make.zone}  Team: {team}")
     print("\nConnections:")
     for connection in make.connections(team):
-        print(f"  {connection['id']}: {connection.get('accountName')} / {connection.get('name')}"
-              f" ({connection.get('accountLabel') or ''})")
+        # Only the app, not the account names: these logs are public.
+        print(f"  {connection['id']}: {connection.get('accountName')}")
     print("\nHooks:")
     for hook in make.hooks(team):
         print(f"  {hook['id']}: {hook['name']} ({hook.get('typeName')}, scenario {hook.get('scenarioId')})")
     print("\nScenarios:")
     for scenario in make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]:
         print(f"  {scenario['id']}: {scenario['name']} active={scenario.get('isActive')}")
+        try:
+            flow = make.call("GET", f"/scenarios/{scenario['id']}/blueprint")["response"]["blueprint"]["flow"]
+        except (MakeError, KeyError) as error:
+            print(f"    blueprint unreadable: {str(error)[:200]}")
+            continue
+        for module in _walk(flow):
+            name = module.get("module", "")
+            print(f"    {name} v{module.get('version')}")
+            if name.split(":")[0] in (FACEBOOK_APP, INSTAGRAM_APP, "gateway"):
+                print(f"      parameter keys: {sorted((module.get('parameters') or {}).keys())}")
+                print(f"      mapper: {json.dumps(module.get('mapper'))[:900]}")
     for app in (FACEBOOK_APP, INSTAGRAM_APP, "gateway"):
         print(f"\nModules of {app} seen in public templates:")
         try:
