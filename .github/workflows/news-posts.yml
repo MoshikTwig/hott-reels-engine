@@ -23,7 +23,7 @@ jobs:
   news:
     runs-on: ubuntu-latest
     env:
-      AUTO_POST: ${{ secrets.META_PAGE_TOKEN != '' || secrets.MAKE_WEBHOOK_URL != '' }}
+      AUTO_POST: ${{ secrets.META_PAGE_TOKEN != '' || secrets.MAKE_WEBHOOK_URL != '' || secrets.MAKE_API_TOKEN != '' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -47,6 +47,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
         run: python -m engine.news --count "${{ inputs.count || '3' }}" ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Save the posts
@@ -80,6 +81,7 @@ jobs:
         env:
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m engine.publish --queue out

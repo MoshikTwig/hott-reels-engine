@@ -158,7 +158,8 @@ def main():
     if args.dry_run:
         return
     publishing = config.get("publish", {})
-    auto = publishing.get("enabled") and (os.environ.get("META_PAGE_TOKEN") or os.environ.get("MAKE_WEBHOOK_URL"))
+    auto = publishing.get("enabled") and (os.environ.get("META_PAGE_TOKEN") or os.environ.get("MAKE_WEBHOOK_URL")
+                                         or os.environ.get("MAKE_API_TOKEN"))
     notify.send_posts(posts, publishing.get("slots") if auto else None)
     for post in posts:
         feeds.mark_used(post["story"]["link"])
