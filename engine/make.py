@@ -76,7 +76,7 @@ def webhook_url():
     for hook in make.hooks(make.team_id()):
         if hook["name"] == HOOK_NAME:
             if os.environ.get("GITHUB_ACTIONS"):
-                print(f"::add-mask::{hook['url']}")  # keep it out of the public logs
+                print(f"::add-mask::{hook['url']}", flush=True)  # keep it out of the public logs
             return hook["url"]
     return None
 
