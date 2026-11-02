@@ -6,6 +6,7 @@ import re
 import time
 
 import feedparser
+import requests
 
 from engine import state
 
@@ -35,7 +36,15 @@ def fresh_stories(feed_urls, limit=15):
     cutoff = time.time() - MAX_AGE_HOURS * 3600
     stories = []
     for url in feed_urls:
-        parsed = feedparser.parse(url, agent="Mozilla/5.0 (HeadOfTheTableTalk Reels engine)")
+        # Fetch with a timeout first: feedparser on its own can wait forever on a slow site.
+        try:
+            page = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (HeadOfTheTableTalk Reels engine)"},
+                                timeout=30)
+            page.raise_for_status()
+        except requests.RequestException as error:
+            print(f"Could not read feed {url}: {error}")
+            continue
+        parsed = feedparser.parse(page.content)
         if parsed.bozo and not parsed.entries:
             print(f"Could not read feed {url}: {parsed.bozo_exception}")
             continue
