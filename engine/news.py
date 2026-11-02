@@ -73,14 +73,12 @@ def _post_from(item, story, tag):
     body, _, tags = item["post"].strip().rpartition("\n")
     if "#" not in tags:
         body, tags = item["post"].strip(), ""
-    credit = story["source"] or postimage.source_name(story["link"])
     return {
         # No links: Facebook pushes posts that send people away down in the feed.
-        "caption": writer.hashtag_first(f"{body.strip()}\n\nSource: {credit}\n\n{tags.strip()}"),
+        "caption": writer.hashtag_first(f"{body.strip()}\n\n{tags.strip()}"),
         "image_headline": item.get("image_headline") or story["title"],
         "highlight": item.get("highlight", ""),
         "tag": tag,
-        "credit": credit,
         "story": story,
     }
 
@@ -122,7 +120,7 @@ def add_images(posts, brand, out, count, first_number=1):
             continue
         path = out / f"post-{first_number + len(ready)}.jpg"
         post["image"] = str(postimage.render_post(photo, post["image_headline"], post["highlight"], post["tag"],
-                                                  post["credit"], brand, path, post.get("kicker", "")))
+                                                  brand, path, post.get("kicker", "")))
         ready.append(post)
         if len(ready) == count:
             break
