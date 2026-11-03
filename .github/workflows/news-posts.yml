@@ -20,7 +20,25 @@ concurrency:
   group: state-writes
 
 jobs:
+  # A late scheduled run must not make a second batch on a day that already has one.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    steps:
+      - id: check
+        run: |
+          today=$(date -u +%Y-%m-%d)
+          if [ "${{ github.event_name }}" = "schedule" ] && \
+             curl -sfI "https://raw.githubusercontent.com/${{ github.repository }}/queue/${today}-news/posts.json" >/dev/null; then
+            echo "Today's posts already exist, skipping."; echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
   news:
+    needs: guard
+    if: ${{ needs.guard.outputs.go == 'true' }}
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
