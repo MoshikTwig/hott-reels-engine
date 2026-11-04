@@ -1,8 +1,6 @@
 name: Daily news posts
 
 on:
-  schedule:
-    - cron: "23 3 * * *"   # 03:23 UTC; GitHub often starts scheduled runs hours late, so aim early
   workflow_dispatch:
     inputs:
       dry_run:
@@ -12,6 +10,10 @@ on:
       count:
         description: How many posts to write
         default: "3"
+      force:
+        description: Make a new batch even if today's already exists
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -20,7 +22,7 @@ concurrency:
   group: state-writes
 
 jobs:
-  # A late scheduled run must not make a second batch on a day that already has one.
+  # A second wake on the same day must not make a second batch (use force to remake it on purpose).
   guard:
     runs-on: ubuntu-latest
     outputs:
@@ -29,7 +31,7 @@ jobs:
       - id: check
         run: |
           today=$(date -u +%Y-%m-%d)
-          if [ "${{ github.event_name }}" = "schedule" ] && \
+          if [ "${{ inputs.force }}" != "true" ] && \
              curl -sfI "https://raw.githubusercontent.com/${{ github.repository }}/queue/${today}-news/posts.json" >/dev/null; then
             echo "Today's posts already exist, skipping."; echo "go=false" >> "$GITHUB_OUTPUT"
           else
