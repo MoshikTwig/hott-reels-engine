@@ -11,6 +11,23 @@ import requests
 from engine import state
 
 MAX_AGE_HOURS = 36
+SAME_STORY = 0.6  # share of title words two headlines must share to count as the same story
+STOPWORDS = {"a", "an", "the", "of", "on", "in", "at", "to", "for", "and", "or", "is", "are", "was", "with",
+             "his", "her", "their", "as", "by", "from", "after", "new", "wwe", "aew", "news", "report"}
+SYNONYMS = {"championship": "title", "champion": "title", "belt": "title", "wins": "win", "won": "win",
+            "beats": "beat", "defeats": "beat", "defeated": "beat", "returns": "return", "returning": "return"}
+
+
+def _words(title):
+    words = re.findall(r"[a-z0-9']+", (title or "").lower())
+    return {SYNONYMS.get(w, w) for w in words if w not in STOPWORDS and len(w) > 1}
+
+
+def same_story(title_a, title_b):
+    a, b = _words(title_a), _words(title_b)
+    if not a or not b:
+        return False
+    return len(a & b) / min(len(a), len(b)) >= SAME_STORY
 
 
 def _clean(text):
@@ -33,6 +50,7 @@ def _feed_image(entry):
 
 def fresh_stories(feed_urls, limit=15):
     seen = set(state.load("seen_stories", []))
+    used_titles = state.load("used_titles", [])
     cutoff = time.time() - MAX_AGE_HOURS * 3600
     stories = []
     for url in feed_urls:
@@ -52,10 +70,16 @@ def fresh_stories(feed_urls, limit=15):
             link = entry.get("link", "")
             published = entry.get("published_parsed") or entry.get("updated_parsed")
             stamp = calendar.timegm(published) if published else time.time()
+            title = _clean(entry.get("title"))
             if not link or link in seen or stamp < cutoff:
                 continue
+            # Other sites run the same story under a new link, so also skip headlines we already used
+            # and headlines that repeat a story already picked from another feed this run.
+            if any(same_story(title, used) for used in used_titles) or \
+                    any(same_story(title, s["title"]) for s in stories):
+                continue
             stories.append({
-                "title": _clean(entry.get("title")),
+                "title": title,
                 "summary": _clean(entry.get("summary"))[:600],
                 "link": link,
                 "source": _clean(parsed.feed.get("title", url)),
@@ -66,7 +90,11 @@ def fresh_stories(feed_urls, limit=15):
     return stories[:limit]
 
 
-def mark_used(link):
+def mark_used(link, title=""):
     seen = state.load("seen_stories", [])
     seen.append(link)
     state.save("seen_stories", seen[-500:])
+    if title:
+        titles = state.load("used_titles", [])
+        titles.append(title)
+        state.save("used_titles", titles[-200:])

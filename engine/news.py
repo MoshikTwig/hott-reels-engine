@@ -162,7 +162,7 @@ def main():
                                          or os.environ.get("MAKE_API_TOKEN"))
     notify.send_posts(posts, publishing.get("slots") if auto else None)
     for post in posts:
-        feeds.mark_used(post["story"]["link"])
+        feeds.mark_used(post["story"]["link"], post["story"]["title"])
 
 
 if __name__ == "__main__":

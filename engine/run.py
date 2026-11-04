@@ -40,7 +40,7 @@ def make_script(fmt, config):
         script = writer.write_script(fmt, writer.story_material(stories), config["ai"]["model"])
         story = stories[int(script.get("story_index", 0))]
         script["source"] = story["link"]
-        return script, lambda: feeds.mark_used(story["link"])
+        return script, lambda: feeds.mark_used(story["link"], story["title"])
     topic = next_topic(fmt)
     script = writer.write_script(fmt, f"Topic: {topic}", config["ai"]["model"])
     script["topic"] = topic
