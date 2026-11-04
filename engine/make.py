@@ -138,6 +138,15 @@ def discover():
             if name.split(":")[0] in (FACEBOOK_APP, INSTAGRAM_APP, "gateway"):
                 print(f"      parameter keys: {sorted((module.get('parameters') or {}).keys())}")
                 print(f"      mapper: {json.dumps(module.get('mapper'))[:900]}")
+            elif name.startswith("http:"):
+                # Field names and short settings only: URLs, headers and bodies may hold private values.
+                params = module.get("parameters") or {}
+                mapper = module.get("mapper") or {}
+                short = lambda d: {k: (v if isinstance(v, (bool, int)) or (isinstance(v, str) and len(v) < 20
+                                       and k not in ("url", "data", "headers", "qs")) else type(v).__name__)
+                                   for k, v in d.items()}
+                print(f"      parameters: {short(params)}")
+                print(f"      mapper: {short(mapper)}")
     for app in (FACEBOOK_APP, INSTAGRAM_APP, "gateway"):
         print(f"\nModules of {app} seen in public templates:")
         try:
