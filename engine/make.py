@@ -12,6 +12,7 @@ The repo is public and so are its Actions logs: never print the webhook address 
 import argparse
 import json
 import os
+import re
 import sys
 
 import requests
@@ -340,7 +341,17 @@ def clock():
     print(f"{CLOCK_NAME}: scenario {scenario['id']} on, scheduling {scenario.get('scheduling')}")
     # One test wake now: Tick only acts if something is actually due, so this is safe at any time.
     result = make.call("POST", f"/scenarios/{scenario['id']}/run", json={"responsive": True})
-    print(f"Test wake: {result.get('status')} (execution {result.get('executionId')})")
+    print(f"Test wake: status {result.get('status')} (1 = ok, 3 = error)")
+    if result.get("status") != 1:
+        try:
+            logs = make.call("GET", f"/scenarios/{scenario['id']}/logs", params={"pg[limit]": 1})
+            text = json.dumps(logs)
+        except MakeError as error:
+            text = str(error)
+        token = os.environ["GH_DISPATCH_TOKEN"]
+        text = text.replace(token, "***")
+        text = re.sub(r"(Bearer|token)\s+[A-Za-z0-9_]+", r"\1 ***", text)
+        print(f"Make's log of that wake: {text[:1500]}")
     notify.send_text("Make is now the clock: it wakes the engine at 07:00, 11:00, 15:00 and 19:00 (Israel time), "
                      "so posts no longer wait on GitHub's late timer.")
 
