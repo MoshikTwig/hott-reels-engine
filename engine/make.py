@@ -289,26 +289,24 @@ def activate():
                      "every time one is sent.")
 
 
-CLOCK = [  # Make's clock: GitHub's own timer starts runs hours late. Times are Make's (Israel) time.
-    ("HOTT clock 07:00 daily news", "07:00", "news-posts.yml", {"count": "3"}),
-    ("HOTT clock 11:00 publish", "11:00", "publish.yml", {}),
-    ("HOTT clock 15:00 publish", "15:00", "publish.yml", {}),
-    ("HOTT clock 19:00 publish", "19:00", "publish.yml", {}),
-]
+CLOCK_NAME = "HOTT clock"
+# Make's free plan allows 2 active scenarios, so one clock scenario wakes the "Tick" workflow once in each
+# posting hour (Make's time zone). Tick works out what is due, so an extra or missed wake does no harm.
+CLOCK_WINDOWS = [["07:00", "08:00"], ["11:00", "12:00"], ["15:00", "16:00"], ["19:00", "20:00"]]
 
 
-def _clock_blueprint(name, workflow, inputs):
+def _clock_blueprint():
     repo = os.environ.get("GITHUB_REPOSITORY", "MoshikTwig/hott-reels-engine")
-    return {"name": name, "flow": [{
+    return {"name": CLOCK_NAME, "flow": [{
         "id": 1, "module": "http:ActionSendData", "version": 3, "parameters": {"handleErrors": False},
         "mapper": {
-            "url": f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
+            "url": f"https://api.github.com/repos/{repo}/actions/workflows/tick.yml/dispatches",
             "method": "post",
             "headers": [{"name": "Authorization", "value": f"Bearer {os.environ['GH_DISPATCH_TOKEN']}"},
                         {"name": "Accept", "value": "application/vnd.github+json"},
                         {"name": "User-Agent", "value": "hott-make-clock"}],
             "qs": [], "bodyType": "raw", "contentType": "application/json",
-            "data": json.dumps({"ref": "main", "inputs": inputs}),
+            "data": json.dumps({"ref": "main"}),
             "parseResponse": False, "serializeUrl": False, "shareCookies": False, "rejectUnauthorized": True,
             "followRedirect": True, "useQuerystring": False, "gzip": True, "useMtls": False,
         },
@@ -317,26 +315,31 @@ def _clock_blueprint(name, workflow, inputs):
 
 
 def clock():
-    """Create (or update) the four scheduled Make scenarios that start the GitHub workflows on time."""
+    """Create (or update) the one scheduled Make scenario that wakes the Tick workflow on time."""
     from engine import notify
     if os.environ.get("GITHUB_ACTIONS"):
         print(f"::add-mask::{os.environ['GH_DISPATCH_TOKEN']}", flush=True)
     make = Make()
     team = make.team_id()
-    scenarios = {s["name"]: s for s in make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]}
-    for name, time_of_day, workflow, inputs in CLOCK:
-        body = {"blueprint": json.dumps(_clock_blueprint(name, workflow, inputs)),
-                "scheduling": json.dumps({"type": "daily", "time": time_of_day})}
-        if name in scenarios:
-            scenario = make.call("PATCH", f"/scenarios/{scenarios[name]['id']}", json=body)["scenario"]
-        else:
-            scenario = make.call("POST", "/scenarios", params={"confirmed": "true"},
-                                 json={**body, "teamId": team})["scenario"]
-        if not scenario.get("isActive"):
-            make.call("POST", f"/scenarios/{scenario['id']}/start")
-        print(f"{name}: scenario {scenario['id']} on, scheduling {scenario.get('scheduling')}")
-    notify.send_text("Make is now the clock: it starts the daily news run at 07:00 and a post at 11:00, 15:00 "
-                     "and 19:00 (Israel time), so posts no longer wait on GitHub's late timer.")
+    scenarios = make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]
+    for old in scenarios:  # the first try made one scenario per time; the free plan can't run them all
+        if old["name"].startswith("HOTT clock ") and old["name"] != CLOCK_NAME:
+            if old.get("isActive"):
+                make.call("POST", f"/scenarios/{old['id']}/stop")
+            make.call("DELETE", f"/scenarios/{old['id']}", params={"confirmed": "true"})
+            print(f"Removed old clock scenario {old['id']} ({old['name']}).")
+    existing = next((sc for sc in scenarios if sc["name"] == CLOCK_NAME), None)
+    scheduling = {"type": "indefinitely", "interval": 3600, "restrict": [{"time": w} for w in CLOCK_WINDOWS]}
+    body = {"blueprint": json.dumps(_clock_blueprint()), "scheduling": json.dumps(scheduling)}
+    if existing:
+        scenario = make.call("PATCH", f"/scenarios/{existing['id']}", json=body)["scenario"]
+    else:
+        scenario = make.call("POST", "/scenarios", params={"confirmed": "true"}, json={**body, "teamId": team})["scenario"]
+    if not scenario.get("isActive"):
+        make.call("POST", f"/scenarios/{scenario['id']}/start")
+    print(f"{CLOCK_NAME}: scenario {scenario['id']} on, scheduling {scenario.get('scheduling')}")
+    notify.send_text("Make is now the clock: it wakes the engine at 07:00, 11:00, 15:00 and 19:00 (Israel time), "
+                     "so posts no longer wait on GitHub's late timer.")
 
 
 def main():

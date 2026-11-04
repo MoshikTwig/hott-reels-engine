@@ -1,8 +1,6 @@
 name: Publish queued posts
 
 on:
-  schedule:
-    - cron: "7 9,13,17 * * *"   # 11:00, 15:00 and 19:00 Israel time (winter)
   workflow_dispatch:
     inputs:
       check_only:

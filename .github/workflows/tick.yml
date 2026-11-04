@@ -1,0 +1,42 @@
+name: Tick
+
+# Woken by Make's clock in each posting hour; GitHub's own hourly timer is only a backup, since it often runs late.
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: tick
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - id: due
+        run: python -m engine.tick
+
+      - name: Start today's news run
+        if: ${{ steps.due.outputs.action == 'news' }}
+        run: gh workflow run news-posts.yml -f count=3
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Send the next post
+        if: ${{ steps.due.outputs.action == 'publish' }}
+        run: gh workflow run publish.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
