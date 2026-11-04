@@ -308,7 +308,8 @@ CLOCK_WINDOWS = [["07:00", "08:00"], ["11:00", "12:00"], ["15:00", "16:00"], ["1
 def _clock_blueprint():
     repo = os.environ.get("GITHUB_REPOSITORY", "MoshikTwig/hott-reels-engine")
     return {"name": CLOCK_NAME, "flow": [{
-        "id": 1, "module": "http:ActionSendData", "version": 3, "parameters": {"handleErrors": False},
+        "id": 1, "module": "http:ActionSendData", "version": 3,
+        "parameters": {"handleErrors": False, "useNewZLibDeCompress": True},
         "mapper": {
             "url": f"https://api.github.com/repos/{repo}/actions/workflows/tick.yml/dispatches",
             "method": "post",
@@ -319,6 +320,8 @@ def _clock_blueprint():
             "data": json.dumps({"ref": "main"}),
             "parseResponse": False, "serializeUrl": False, "shareCookies": False, "rejectUnauthorized": True,
             "followRedirect": True, "useQuerystring": False, "gzip": True, "useMtls": False,
+            # The rest of the fields Make's own HTTP module saves, left empty, or Make rejects the bundle.
+            "ca": "", "timeout": "", "authUser": "", "authPass": "", "followAllRedirects": False,
         },
         "metadata": {"designer": {"x": 0, "y": 0}},
     }], "metadata": {"version": 1, "scenario": {"roundtrips": 1, "maxErrors": 3, "autoCommit": True}}}
