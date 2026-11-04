@@ -289,9 +289,59 @@ def activate():
                      "every time one is sent.")
 
 
+CLOCK = [  # Make's clock: GitHub's own timer starts runs hours late. Times are Make's (Israel) time.
+    ("HOTT clock 07:00 daily news", "07:00", "news-posts.yml", {"count": "3"}),
+    ("HOTT clock 11:00 publish", "11:00", "publish.yml", {}),
+    ("HOTT clock 15:00 publish", "15:00", "publish.yml", {}),
+    ("HOTT clock 19:00 publish", "19:00", "publish.yml", {}),
+]
+
+
+def _clock_blueprint(name, workflow, inputs):
+    repo = os.environ.get("GITHUB_REPOSITORY", "MoshikTwig/hott-reels-engine")
+    return {"name": name, "flow": [{
+        "id": 1, "module": "http:ActionSendData", "version": 3, "parameters": {"handleErrors": False},
+        "mapper": {
+            "url": f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
+            "method": "post",
+            "headers": [{"name": "Authorization", "value": f"Bearer {os.environ['GH_DISPATCH_TOKEN']}"},
+                        {"name": "Accept", "value": "application/vnd.github+json"},
+                        {"name": "User-Agent", "value": "hott-make-clock"}],
+            "qs": [], "bodyType": "raw", "contentType": "application/json",
+            "data": json.dumps({"ref": "main", "inputs": inputs}),
+            "parseResponse": False, "serializeUrl": False, "shareCookies": False, "rejectUnauthorized": True,
+            "followRedirect": True, "useQuerystring": False, "gzip": True, "useMtls": False,
+        },
+        "metadata": {"designer": {"x": 0, "y": 0}},
+    }], "metadata": {"version": 1, "scenario": {"roundtrips": 1, "maxErrors": 3, "autoCommit": True}}}
+
+
+def clock():
+    """Create (or update) the four scheduled Make scenarios that start the GitHub workflows on time."""
+    from engine import notify
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(f"::add-mask::{os.environ['GH_DISPATCH_TOKEN']}", flush=True)
+    make = Make()
+    team = make.team_id()
+    scenarios = {s["name"]: s for s in make.call("GET", "/scenarios", params={"teamId": team})["scenarios"]}
+    for name, time_of_day, workflow, inputs in CLOCK:
+        body = {"blueprint": json.dumps(_clock_blueprint(name, workflow, inputs)),
+                "scheduling": json.dumps({"type": "daily", "time": time_of_day})}
+        if name in scenarios:
+            scenario = make.call("PATCH", f"/scenarios/{scenarios[name]['id']}", json=body)["scenario"]
+        else:
+            scenario = make.call("POST", "/scenarios", params={"confirmed": "true"},
+                                 json={**body, "teamId": team})["scenario"]
+        if not scenario.get("isActive"):
+            make.call("POST", f"/scenarios/{scenario['id']}/start")
+        print(f"{name}: scenario {scenario['id']} on, scheduling {scenario.get('scheduling')}")
+    notify.send_text("Make is now the clock: it starts the daily news run at 07:00 and a post at 11:00, 15:00 "
+                     "and 19:00 (Israel time), so posts no longer wait on GitHub's late timer.")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["discover", "build", "activate"])
+    parser.add_argument("action", choices=["discover", "build", "activate", "clock"])
     parser.add_argument("--no-activate", action="store_true")
     args = parser.parse_args()
     try:
@@ -299,6 +349,8 @@ def main():
             discover()
         elif args.action == "activate":
             activate()
+        elif args.action == "clock":
+            clock()
         else:
             build(activate=not args.no_activate)
     except MakeError as error:
