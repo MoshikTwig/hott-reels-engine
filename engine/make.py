@@ -338,6 +338,9 @@ def clock():
     if not scenario.get("isActive"):
         make.call("POST", f"/scenarios/{scenario['id']}/start")
     print(f"{CLOCK_NAME}: scenario {scenario['id']} on, scheduling {scenario.get('scheduling')}")
+    # One test wake now: Tick only acts if something is actually due, so this is safe at any time.
+    result = make.call("POST", f"/scenarios/{scenario['id']}/run", json={"responsive": True})
+    print(f"Test wake: {result.get('status')} (execution {result.get('executionId')})")
     notify.send_text("Make is now the clock: it wakes the engine at 07:00, 11:00, 15:00 and 19:00 (Israel time), "
                      "so posts no longer wait on GitHub's late timer.")
 
