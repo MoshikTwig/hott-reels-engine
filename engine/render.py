@@ -3,7 +3,7 @@
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGO = ROOT / "assets" / "logo.png"
@@ -13,6 +13,10 @@ FONT_CANDIDATES = [
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
 ]
 PAD_SECONDS = 0.3
+MONO_CANDIDATES = [
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"),
+]
 
 
 def _font(size):
@@ -98,6 +102,75 @@ def photo_canvas(photo, width, height, bg):
     return ImageEnhance.Color(canvas).enhance(1.08)
 
 
+def vhs_look(img):
+    """Make a photo look like an old VHS tape: soft, warm, faded, slightly misaligned colors and scanlines."""
+    W, H = img.size
+    soft = img.resize((W // 3, H // 3), Image.BILINEAR).resize((W, H), Image.BILINEAR)
+    soft = ImageEnhance.Color(soft).enhance(0.55)
+    soft = ImageEnhance.Contrast(soft).enhance(0.92)
+    r, g, b = soft.split()
+    r = r.point(lambda v: min(255, int(v * 1.08 + 14)))
+    b = b.point(lambda v: int(v * 0.86))
+    r = ImageChops.offset(r, 7, 0)
+    b = ImageChops.offset(b, -5, 0)
+    tape = Image.merge("RGB", (r, g, b))
+    lines = Image.new("L", (W, H), 0)
+    draw = ImageDraw.Draw(lines)
+    for y in range(0, H, 4):
+        draw.line((0, y, W, y), fill=70)
+    return Image.composite(Image.new("RGB", (W, H), (0, 0, 0)), tape, lines)
+
+
+def split_canvas(left, right, width, height, bg):
+    """THEN on the left (VHS look), NOW on the right (crisp), for the era comparison format."""
+    half = width // 2
+    canvas = Image.new("RGB", (width, height))
+    for i, photo in enumerate((left, right)):
+        if photo is None:
+            part = bg.crop((i * half, 0, (i + 1) * half, height))
+        else:
+            part = _cover(ImageOps.exif_transpose(Image.open(photo)).convert("RGB"), half, height)
+            part = ImageEnhance.Contrast(part).enhance(1.12)
+        canvas.paste(vhs_look(part) if i == 0 else part, (i * half, 0))
+    return canvas
+
+
+def _mono(size):
+    for path in MONO_CANDIDATES:
+        if path.exists():
+            return ImageFont.truetype(str(path), size)
+    return _font(size)
+
+
+def _era_marks(layer, era, brand):
+    """A VHS 'PLAY' readout on classic shots, a gold 'NOW' tag on modern ones."""
+    draw = ImageDraw.Draw(layer)
+    W = layer.width
+    if era == "classic":
+        font = _mono(58)
+        text = "PLAY \u25b6"
+        w = draw.textlength(text, font=font)
+        draw.text((W - w - 56, 80), text, font=font, fill=(235, 235, 235), stroke_width=3, stroke_fill=(0, 0, 0))
+    elif era == "modern":
+        font = _font(60)
+        w = draw.textlength("NOW", font=font)
+        draw.rounded_rectangle((W - w - 96, 74, W - 48, 164), 12, fill=_hex(brand["gold"]))
+        draw.text((W - w - 72, 82), "NOW", font=font, fill=_hex(brand["black"]))
+
+
+def _split_labels(layer, brand):
+    draw = ImageDraw.Draw(layer)
+    W, H = layer.size
+    draw.rectangle((W // 2 - 4, 0, W // 2 + 4, H), fill=_hex(brand["gold"]))
+    then_font, now_font = _mono(84), _font(96)
+    y = 1120
+    w = draw.textlength("THEN", font=then_font)
+    draw.text((W // 4 - w / 2, y), "THEN", font=then_font, fill=(240, 240, 240), stroke_width=4, stroke_fill=(0, 0, 0))
+    w = draw.textlength("NOW", font=now_font)
+    draw.text((W * 3 // 4 - w / 2, y - 8), "NOW", font=now_font, fill=_hex(brand["gold"]),
+              stroke_width=4, stroke_fill=(0, 0, 0))
+
+
 def _shade(img, top=460, bottom_start=1000, strength=225):
     """Dark gradients at the top and bottom so text stays readable on any photo."""
     W, H = img.size
@@ -157,7 +230,13 @@ def draw_frame(segment, index, total, photo, bg, brand):
     last = index == total - 1
     quote = segment.get("style") == "quote"
 
-    base = photo_canvas(photo, W, H, bg)
+    era = segment.get("era")
+    if isinstance(photo, (list, tuple)):
+        base = split_canvas(photo[0], photo[1], W, H, bg)
+    else:
+        base = photo_canvas(photo, W, H, bg)
+        if era == "classic" and not last:
+            base = vhs_look(base)
     if last or quote:
         base = ImageEnhance.Brightness(base.filter(ImageFilter.GaussianBlur(14 if last else 6))).enhance(0.4)
     base = _shade(base)
@@ -176,6 +255,10 @@ def draw_frame(segment, index, total, photo, bg, brand):
 
     logo = _logo(120)
     layer.paste(logo, (48, 56), logo)
+    if isinstance(photo, (list, tuple)):
+        _split_labels(layer, brand)
+    else:
+        _era_marks(layer, era, brand)
 
     if quote:
         font, lines = _fit(draw, f"\u201c{segment['screen']}\u201d", W - 140, 6, 120, 70)
@@ -233,15 +316,22 @@ def captions_ass(words, path, brand, max_words=3):
     )
 
 
-def segment_video(base_path, layer_path, audio_path, seconds, out_path, fps, index=0, ass_path=None):
+def segment_video(base_path, layer_path, audio_path, seconds, out_path, fps, index=0, ass_path=None,
+                  look=None, static_burst=False):
     frames = int((seconds + PAD_SECONDS) * fps)
     # Alternate a slow push in with a slow pull out on the photo so cuts feel alive.
     z = "min(1+0.0009*on,1.12)" if index % 2 == 0 else "max(1.12-0.0009*on,1)"
     graph = (
         f"[0:v]scale=2160:-1,zoompan=z='{z}':d={frames}"
-        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={fps}[photo];"
-        "[photo][1:v]overlay=0:0:format=auto"
+        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={fps}"
     )
+    if look == "classic":
+        # Moving tape grain and a faint flicker.
+        graph += ",noise=alls=16:allf=t+u,eq=brightness='0.025*sin(t*37)':eval=frame"
+    if static_burst:
+        # A quarter second of TV static as the tape cuts to today.
+        graph += ",noise=alls=100:allf=t:enable='lt(t,0.25)'"
+    graph += "[photo];[photo][1:v]overlay=0:0:format=auto"
     if ass_path:
         graph += f",subtitles={ass_path}:fontsdir={FONT_DIR}"
     graph += "[v]"

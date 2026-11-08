@@ -1,0 +1,49 @@
+name: Sample Reel
+
+# Renders an example script so a new format can be checked before it goes into the daily rotation.
+# Runs when an examples/*.json file changes on a claude/ branch, or by hand.
+on:
+  push:
+    branches: ["claude/**"]
+    paths: ["examples/*.json", ".github/workflows/sample-reel.yml"]
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Example script to render
+        default: examples/era-art-of-the-promo.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sample-reel
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -r requirements.txt
+          curl -sSfL -o assets/fonts/Anton-Regular.ttf \
+            https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf
+
+      - name: Render the sample
+        run: python -m engine.run --script "${{ inputs.script || 'examples/era-art-of-the-promo.json' }}" --no-notify
+
+      - name: Share it on the reel-previews branch
+        run: |
+          cd out
+          git init -q -b reel-previews
+          git add .
+          git -c user.name=reels-engine -c user.email=reels-engine@users.noreply.github.com commit -qm "Sample Reel"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" reel-previews

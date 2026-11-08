@@ -60,8 +60,13 @@ def build(script, config, out_dir):
     bg = render.background(video["width"], video["height"], brand)
     photos = images.PhotoPicker(out_dir)
     parts = []
+    previous_era = None
     for i, (segment, (audio, seconds, words)) in enumerate(zip(segments, clips)):
-        photo = photos.photo_for(segment.get("image"), i)
+        if segment.get("images"):  # a THEN / NOW split screen
+            photo = [photos.photo_for(query, f"{i}_{k}") for k, query in enumerate(segment["images"][:2])]
+        else:
+            photo = photos.photo_for(segment.get("image"), i)
+        era = segment.get("era")
         base, layer = render.draw_frame(segment, i, len(segments), photo, bg, brand)
         frame, overlay = out_dir / f"frame_{i}.jpg", out_dir / f"layer_{i}.png"
         base.save(frame, quality=92)
@@ -71,7 +76,10 @@ def build(script, config, out_dir):
             ass = out_dir / f"captions_{i}.ass"
             render.captions_ass(words, ass, brand)
         part = out_dir / f"part_{i}.mp4"
-        render.segment_video(frame, overlay, audio, seconds, part, video["fps"], i, ass)
+        render.segment_video(frame, overlay, audio, seconds, part, video["fps"], i, ass,
+                             look=None if segment.get("images") else era,
+                             static_burst=era == "modern" and previous_era == "classic")
+        previous_era = era
         parts.append(part)
 
     credit = photos.credit_line()
