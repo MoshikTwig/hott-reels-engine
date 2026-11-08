@@ -4,7 +4,10 @@
     {
       "voice": "Wrestling has changed. But has it lost its soul?",
       "screen": "HAS WRESTLING LOST ITS SOUL?",
-      "images": ["Ric Flair", "Roman Reigns"]
+      "images": [
+        "Ric Flair",
+        "Roman Reigns"
+      ]
     },
     {
       "voice": "Back in the day, it was one man, one microphone, and a promo you never forgot.",
@@ -13,13 +16,13 @@
       "image": "Dusty Rhodes"
     },
     {
-      "voice": "No pyro. No cinematic video packages. Just charisma that made you believe every word.",
+      "voice": "No pyro. No video packages. Just pure charisma.",
       "screen": "NO FILTERS. JUST CHARISMA.",
       "era": "classic",
-      "image": "Roddy Piper"
+      "image": "Hulk Hogan"
     },
     {
-      "voice": "When Flair said to be the man, you gotta beat the man, a whole generation believed him.",
+      "voice": "When Flair said to be the man, you gotta beat the man, you believed him.",
       "screen": "EVERY WORD FELT PERSONAL",
       "era": "classic",
       "image": "Ric Flair"
@@ -31,18 +34,21 @@
       "image": "Roman Reigns"
     },
     {
-      "voice": "Years-long sagas. Like Cody Rhodes finally finishing his father's story at WrestleMania.",
+      "voice": "Years-long sagas, like Cody finishing his father's story.",
       "screen": "BIGGER STORIES. DEEPER EMOTIONS.",
       "era": "modern",
       "image": "Cody Rhodes"
     },
     {
-      "voice": "Same family. Two eras. Two different ways to make you feel it.",
+      "voice": "Same family. Two eras. Two ways to make you feel it.",
       "screen": "OLD SCHOOL VS NEW SCHOOL",
-      "images": ["Dusty Rhodes", "Cody Rhodes"]
+      "images": [
+        "Dusty Rhodes",
+        "Cody Rhodes"
+      ]
     },
     {
-      "voice": "So which era made you believe? Classic, or modern?",
+      "voice": "So which era made you believe?",
       "screen": "WHICH ERA MADE YOU BELIEVE?",
       "image": null
     }

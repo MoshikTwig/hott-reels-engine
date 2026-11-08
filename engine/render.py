@@ -9,10 +9,12 @@ ROOT = Path(__file__).resolve().parent.parent
 LOGO = ROOT / "assets" / "logo.png"
 FONT_DIR = ROOT / "assets" / "fonts"
 FONT_CANDIDATES = [
+    ROOT / "assets" / "fonts" / "ArchivoBlack-Regular.ttf",  # heavy, wide and easy to read on phones
     ROOT / "assets" / "fonts" / "Anton-Regular.ttf",
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
 ]
 PAD_SECONDS = 0.3
+CAPTION_FONT = "Archivo Black" if (FONT_DIR / "ArchivoBlack-Regular.ttf").exists() else "Anton"
 MONO_CANDIDATES = [
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"),
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"),
@@ -126,11 +128,7 @@ def split_canvas(left, right, width, height, bg):
     half = width // 2
     canvas = Image.new("RGB", (width, height))
     for i, photo in enumerate((left, right)):
-        if photo is None:
-            part = bg.crop((i * half, 0, (i + 1) * half, height))
-        else:
-            part = _cover(ImageOps.exif_transpose(Image.open(photo)).convert("RGB"), half, height)
-            part = ImageEnhance.Contrast(part).enhance(1.12)
+        part = photo_canvas(photo, half, height, bg.crop((i * half, 0, (i + 1) * half, height)))
         canvas.paste(vhs_look(part) if i == 0 else part, (i * half, 0))
     return canvas
 
@@ -163,7 +161,7 @@ def _split_labels(layer, brand):
     W, H = layer.size
     draw.rectangle((W // 2 - 4, 0, W // 2 + 4, H), fill=_hex(brand["gold"]))
     then_font, now_font = _mono(84), _font(96)
-    y = 1120
+    y = 210
     w = draw.textlength("THEN", font=then_font)
     draw.text((W // 4 - w / 2, y), "THEN", font=then_font, fill=(240, 240, 240), stroke_width=4, stroke_fill=(0, 0, 0))
     w = draw.textlength("NOW", font=now_font)
@@ -171,7 +169,7 @@ def _split_labels(layer, brand):
               stroke_width=4, stroke_fill=(0, 0, 0))
 
 
-def _shade(img, top=460, bottom_start=1000, strength=225):
+def _shade(img, top=300, bottom_start=1050, strength=235):
     """Dark gradients at the top and bottom so text stays readable on any photo."""
     W, H = img.size
     mask = Image.new("L", (1, H), 0)
@@ -189,12 +187,13 @@ def _logo(width):
     return logo.resize((width, int(logo.height * width / logo.width)), Image.LANCZOS)
 
 
-def _chyron(img, text, y, brand):
-    """The headline: black capitals on a gold bar, like a TV graphic."""
+def _chyron(img, text, bottom, brand):
+    """The headline: black capitals on a gold bar, like a TV graphic, ending at `bottom`."""
     gold, black = _hex(brand["gold"]), _hex(brand["black"])
     draw = ImageDraw.Draw(img)
-    font, lines = _fit(draw, text, img.width - 200, 2, 96, 60)
+    font, lines = _fit(draw, text, img.width - 200, 2, 80, 50)
     line_h = font.size * 1.15
+    y = bottom - len(lines) * (line_h + 14)
     for i, line in enumerate(lines):
         w = draw.textlength(line, font=font)
         x = (img.width - w) / 2
@@ -266,9 +265,10 @@ def draw_frame(segment, index, total, photo, bg, brand):
         _centered(draw, lines, font, H * 0.45 - block / 2, white)
         return base, layer
 
-    y = _chyron(layer, segment["screen"], 270, brand)
+    # Text sits low, under the faces, and above the app buttons at the very bottom.
+    _chyron(layer, segment["screen"], 1640, brand)
     if segment.get("stamp"):
-        _stamp(layer, segment["stamp"], y + 20, brand)
+        _stamp(layer, segment["stamp"], 330, brand)
     return base, layer
 
 
@@ -277,8 +277,8 @@ def _ass_time(seconds):
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 
 
-def captions_ass(words, path, brand, max_words=3):
-    """Big word-by-word captions: groups of up to 3 words, the spoken word lit in gold."""
+def captions_ass(words, path, brand, max_words=2):
+    """Big word-by-word captions: groups of up to 2 words, the spoken word lit in gold and popping in."""
     r, g, b = _hex(brand["gold"])
     gold = f"&H00{b:02X}{g:02X}{r:02X}"
     groups, current = [], []
@@ -301,7 +301,7 @@ def captions_ass(words, path, brand, max_words=3):
         current[1] = following[0]
     events = [
         f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Pop,,0,0,0,,"
-        f"{{\\pos(540,1390)\\fscx106\\fscy106\\t(0,90,\\fscx100\\fscy100)}}{text}"
+        f"{{\\pos(540,1300)\\fscx122\\fscy122\\t(0,110,\\fscx100\\fscy100)}}{text}"
         for start, end, text in timed
     ]
     path.write_text(
@@ -309,8 +309,8 @@ def captions_ass(words, path, brand, max_words=3):
         "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, "
         "Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: Pop,Anton,104,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,1,0,1,"
-        "7,3,5,60,60,0,1\n\n"
+        f"Style: Pop,{CAPTION_FONT},96,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,1,0,1,"
+        "8,4,5,60,60,0,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
         + "\n".join(events) + "\n"
     )

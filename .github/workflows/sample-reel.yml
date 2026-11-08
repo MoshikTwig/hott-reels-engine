@@ -36,6 +36,8 @@ jobs:
           pip install -r requirements.txt
           curl -sSfL -o assets/fonts/Anton-Regular.ttf \
             https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf
+          curl -sSfL -o assets/fonts/ArchivoBlack-Regular.ttf \
+            https://github.com/google/fonts/raw/main/ofl/archivoblack/ArchivoBlack-Regular.ttf
 
       - name: Render the sample
         run: python -m engine.run --script "${{ inputs.script || 'examples/era-art-of-the-promo.json' }}" --no-notify
