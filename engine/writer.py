@@ -69,7 +69,9 @@ FORMAT_BRIEFS = {
 }
 
 
-BUSY_FALLBACK = "gemini-flash-lite-latest"
+# Tried in order when the model before is busy, slow or gone. Names Google has retired just answer 404 and are skipped.
+BACKUP_MODELS = ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+BUSY = (429, 500, 502, 503, 504)
 
 
 def _available_flash_model(key):
@@ -90,8 +92,8 @@ def _available_flash_model(key):
     return sorted(flash, reverse=True)[0]
 
 
-def _generate(model, key, prompt, attempts=5):
-    """Call the model, retrying the slow or busy answers the free tier sometimes gives."""
+def _generate(model, key, prompt, attempts):
+    """Call one model, retrying slow or busy answers. Returns the response, or None if it never answered."""
     for attempt in range(1, attempts + 1):
         try:
             response = requests.post(
@@ -101,37 +103,61 @@ def _generate(model, key, prompt, attempts=5):
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
                 },
-                timeout=120,
+                timeout=(15, 90),
             )
         except requests.exceptions.RequestException as error:
-            if attempt == attempts:
-                raise SystemExit(f"Gemini API did not answer after {attempts} tries: {error}")
-            print(f"Gemini API try {attempt} failed ({error}), retrying.")
+            print(f"{model} try {attempt} failed ({error}).")
+            response = None
         else:
-            if response.status_code not in (429, 500, 502, 503, 504) or attempt == attempts:
+            if response.status_code not in BUSY:
                 return response
-            print(f"Gemini API try {attempt} returned {response.status_code}, retrying.")
-        time.sleep(20 * attempt)
+            print(f"{model} try {attempt} returned {response.status_code}.")
+        if attempt < attempts:
+            time.sleep(10 * attempt)
+    return response
+
+
+def parse_json(text):
+    """Read the model's JSON, forgiving the small slips it sometimes makes (stray backslashes, code fences)."""
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
+    try:
+        return json.loads(text, strict=False)
+    except json.JSONDecodeError:
+        # A lone backslash before a letter that isn't a JSON escape, like \' or \$, breaks the whole answer.
+        fixed = re.sub(r'\\(["\\/bfnrtu])|\\', lambda m: m.group(0) if m.group(1) else "\\\\", text)
+        return json.loads(fixed, strict=False)
 
 
 def ask_json(prompt, model):
-    """Send a prompt to Gemini and return its JSON answer."""
+    """Send a prompt to Gemini and return its JSON answer, moving to a backup model whenever one fails."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise SystemExit("GEMINI_API_KEY is not set. Add it as a GitHub secret.")
-    model = os.environ.get("GEMINI_MODEL", model)
-    response = _generate(model, key, prompt)
-    if response.status_code == 404:
-        fallback = _available_flash_model(key)
-        print(f"Model {model} is not available, using {fallback} instead.")
-        response = _generate(fallback, key, prompt)
-    if response.status_code in (429, 500, 502, 503, 504):
-        # Busy spells on the free tier usually hit one model; the lighter one often still answers.
-        print(f"{model} is busy, trying {BUSY_FALLBACK} instead.")
-        response = _generate(BUSY_FALLBACK, key, prompt)
-    if not response.ok:
-        raise SystemExit(f"Gemini API error {response.status_code}: {response.text[:500]}")
-    return json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+    chain = [os.environ.get("GEMINI_MODEL", model)] + BACKUP_MODELS
+    tried, problems = [], []
+    while chain:
+        name = chain.pop(0)
+        if name in tried:
+            continue
+        tried.append(name)
+        response = _generate(name, key, prompt, attempts=3 if len(tried) == 1 else 2)
+        if response is None or response.status_code in BUSY:
+            problems.append(f"{name}: busy or not answering")
+        elif response.status_code == 404:
+            problems.append(f"{name}: not available")
+            if len(tried) == 1:
+                chain.insert(0, _available_flash_model(key))
+        elif not response.ok:
+            raise SystemExit(f"Gemini API error {response.status_code}: {response.text[:500]}")
+        else:
+            try:
+                return parse_json(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+            except (KeyError, IndexError, ValueError) as error:
+                problems.append(f"{name}: unreadable answer ({error})")
+        if chain:
+            print(f"{problems[-1]}, trying {chain[0]} instead.")
+    raise SystemExit("Gemini could not write the posts. " + "; ".join(problems))
 
 
 def write_script(fmt, material, model):
