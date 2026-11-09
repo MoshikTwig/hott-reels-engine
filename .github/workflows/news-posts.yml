@@ -57,7 +57,7 @@ jobs:
       - name: Install tools
         run: |
           pip install -r requirements.txt
-          curl -sSfL -o assets/fonts/Anton-Regular.ttf \
+          curl -sSfL --retry 5 --retry-all-errors --retry-delay 5 -o assets/fonts/Anton-Regular.ttf \
             https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf
 
       - name: Write the posts
