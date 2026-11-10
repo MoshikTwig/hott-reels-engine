@@ -5,7 +5,7 @@ name: Sample Reel
 on:
   push:
     branches: ["claude/**"]
-    paths: ["examples/*.json", ".github/workflows/sample-reel.yml"]
+    paths: ["examples/*.json", "engine/**", ".github/workflows/sample-reel.yml"]
   workflow_dispatch:
     inputs:
       script:
