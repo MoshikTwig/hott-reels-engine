@@ -9,6 +9,10 @@ import re
 
 import requests
 
+from engine import render
+
+FACE_TRIES = 5
+
 API = "https://commons.wikimedia.org/w/api.php"
 HEADERS = {"User-Agent": "HeadOfTheTableTalkReels/1.0 (https://github.com/MoshikTwig/hott-reels-engine)"}
 SKIP_WORDS = ("logo", "signature", "poster", "map", "chart", "diagram", "flag", "belt", "ticket")
@@ -81,23 +85,37 @@ class PhotoPicker:
             except requests.RequestException as error:
                 print(f"Photo search failed for {query!r}: {error}")
                 self.cache[query] = []
+        # Look at the best few candidates and take the first that clearly shows a face,
+        # so a robe on a hanger or a wide crowd shot never stands in for the wrestler.
+        path = self.workdir / f"photo_{index}.jpg"
+        fallback, tried = None, 0
         for candidate in self.cache[query]:
             if candidate["url"] in self.used:
                 continue
-            path = self.workdir / f"photo_{index}.jpg"
+            if tried == FACE_TRIES:
+                break
             try:
                 response = requests.get(candidate["url"], headers=HEADERS, timeout=60)
                 response.raise_for_status()
             except requests.RequestException as error:
                 print(f"Could not download {candidate['title']}: {error}")
                 continue
+            tried += 1
             path.write_bytes(response.content)
-            self.used.add(candidate["url"])
-            self.credits.append(f"{candidate['artist']} ({candidate['license']})")
-            self.last = path
-            return path
+            if render.cv2 is None or render.has_face(path):
+                return self._take(candidate, path)
+            fallback = fallback or (candidate, response.content)
+        if fallback:
+            path.write_bytes(fallback[1])
+            return self._take(fallback[0], path)
         print(f"No new photo found for {query!r}, reusing the previous one.")
         return self.last
+
+    def _take(self, candidate, path):
+        self.used.add(candidate["url"])
+        self.credits.append(f"{candidate['artist']} ({candidate['license']})")
+        self.last = path
+        return path
 
     def credit_line(self):
         if not self.credits:

@@ -15,10 +15,10 @@ def duration(path):
     return float(out.stdout.strip())
 
 
-async def _speak(text, path, voice, rate):
+async def _speak(text, path, voice, rate, pitch="+0Hz"):
     """Save the audio and return each spoken word with its start and end in seconds."""
     words = []
-    communicate = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, boundary="WordBoundary")
     with open(path, "wb") as audio:
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -46,7 +46,7 @@ def _silence(text, path):
     )
 
 
-def narrate(segments, workdir, voice, rate):
+def narrate(segments, workdir, voice, rate, pitch="+0Hz"):
     """Write one mp3 per segment and return (path, length, word timings) for each."""
     clips = []
     for i, segment in enumerate(segments):
@@ -55,7 +55,7 @@ def narrate(segments, workdir, voice, rate):
         if os.environ.get("VOICE") == "silent":
             _silence(segment["voice"], path)
         else:
-            words = asyncio.run(_speak(segment["voice"], path, voice, rate))
+            words = asyncio.run(_speak(segment["voice"], path, voice, rate, pitch))
         seconds = duration(path)
         clips.append((path, seconds, words or _even_words(segment["voice"], seconds)))
     return clips

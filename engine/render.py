@@ -3,6 +3,13 @@
 import subprocess
 from pathlib import Path
 
+try:  # face finding is optional: without OpenCV photos are simply centered
+    import cv2
+    import numpy as np
+    _FACES = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+except Exception:  # noqa: BLE001
+    cv2 = None
+
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,13 +84,52 @@ def background(width, height, brand):
     return Image.composite(Image.new("RGB", (width, height), gold), base, glow)
 
 
-def _cover(img, width, height, focus_y=0.35):
-    """Scale to fill the frame and crop, keeping the upper part where faces usually are."""
+def face_center(img):
+    """Where the biggest face is, as (x, y) fractions of the photo. None when no face is found."""
+    if cv2 is None:
+        return None
+    small = img.copy()
+    small.thumbnail((900, 900))
+    gray = cv2.cvtColor(np.asarray(small), cv2.COLOR_RGB2GRAY)
+    faces = _FACES.detectMultiScale(gray, 1.1, 6, minSize=(70, 70))
+    if len(faces) == 0:
+        return None
+    x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+    return (x + w / 2) / small.width, (y + h / 2) / small.height
+
+
+def has_face(path):
+    try:
+        return face_center(ImageOps.exif_transpose(Image.open(path)).convert("RGB")) is not None
+    except OSError:
+        return False
+
+
+def _cover(img, width, height, focus_y=0.35, face=None):
+    """Scale to fill the frame and crop. With a face, the crop is built around it;
+    otherwise it keeps the upper part where faces usually are."""
     scale = max(width / img.width, height / img.height)
     img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
-    left = (img.width - width) // 2
-    top = int(max(0, min(img.height - height, img.height * focus_y - height * focus_y)))
+    if face:
+        left = int(max(0, min(img.width - width, face[0] * img.width - width / 2)))
+        top = int(max(0, min(img.height - height, face[1] * img.height - height * 0.33)))
+    else:
+        left = (img.width - width) // 2
+        top = int(max(0, min(img.height - height, img.height * focus_y - height * focus_y)))
     return img.crop((left, top, left + width, top + height))
+
+
+def _vignette(img, strength=120):
+    """Darker corners pull the eye to the person in the middle."""
+    W, H = img.size
+    mask = Image.new("L", (64, 64), 0)
+    px = mask.load()
+    for y in range(64):
+        for x in range(64):
+            d = (((x - 31.5) / 31.5) ** 2 + ((y - 31.5) / 31.5) ** 2) ** 0.5
+            px[x, y] = int(strength * max(0, min(1, (d - 0.55) / 0.85)))
+    mask = mask.resize((W, H), Image.BICUBIC)
+    return Image.composite(Image.new("RGB", (W, H), (0, 0, 0)), img, mask)
 
 
 def photo_canvas(photo, width, height, bg):
@@ -91,8 +137,11 @@ def photo_canvas(photo, width, height, bg):
     if photo is None:
         return bg.copy()
     img = ImageOps.exif_transpose(Image.open(photo)).convert("RGB")
-    if img.height / img.width >= 1.15:
-        canvas = _cover(img, width, height)
+    face = face_center(img)
+    # A wide photo can still fill the screen when we know where the face is and the slice is sharp enough.
+    sharp_slice = img.height * width / height >= min(width, 480)
+    if img.height / img.width >= 1.15 or (face and sharp_slice):
+        canvas = _cover(img, width, height, face=face)
     else:
         canvas = _cover(img, width, height).filter(ImageFilter.GaussianBlur(40))
         canvas = ImageEnhance.Brightness(canvas).enhance(0.45)
@@ -222,6 +271,26 @@ def _stamp(img, text, y, brand):
     return y + tile.height
 
 
+def _vote_buttons(layer, options, y, brand):
+    """Two big numbered buttons, so answering takes one keystroke in the comments."""
+    gold, black, white = _hex(brand["gold"]), _hex(brand["black"]), _hex(brand["white"])
+    draw = ImageDraw.Draw(layer)
+    W = layer.width
+    box_w, box_h, gap = 440, 250, 40
+    left = (W - 2 * box_w - gap) // 2
+    for i, label in enumerate(options):
+        x = left + i * (box_w + gap)
+        fill, ink = ((20, 20, 20, 215), white) if i == 0 else (gold + (255,), black)
+        draw.rounded_rectangle((x, y, x + box_w, y + box_h), 28, fill=fill, outline=white if i == 0 else gold, width=6)
+        number = _font(120)
+        w = draw.textlength(str(i + 1), font=number)
+        draw.text((x + (box_w - w) / 2, y + 14), str(i + 1), font=number, fill=gold if i == 0 else black)
+        font, lines = _fit(draw, label.upper(), box_w - 50, 1, 60, 34)
+        w = draw.textlength(lines[0], font=font)
+        draw.text((x + (box_w - w) / 2, y + box_h - font.size - 34), lines[0], font=font, fill=ink)
+    return y + box_h
+
+
 def draw_frame(segment, index, total, photo, bg, brand):
     """Return the photo layer (which slowly zooms) and a transparent graphics layer (which stays still)."""
     W, H = bg.size
@@ -238,6 +307,8 @@ def draw_frame(segment, index, total, photo, bg, brand):
             base = vhs_look(base)
     if last or quote:
         base = ImageEnhance.Brightness(base.filter(ImageFilter.GaussianBlur(14 if last else 6))).enhance(0.4)
+    else:
+        base = _vignette(base)
     base = _shade(base)
 
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -249,7 +320,12 @@ def draw_frame(segment, index, total, photo, bg, brand):
         layer.paste(logo, ((W - logo.width) // 2, 170), logo)
         font, lines = _fit(draw, segment["screen"], W - 160, 3, 140, 80)
         y = _centered(draw, lines, font, 170 + logo.height + 80, gold)
-        _centered(draw, ["COMMENT BELOW"], _font(64), y + 50, white)
+        vote = segment.get("vote")
+        if vote and len(vote) == 2:
+            y = _vote_buttons(layer, vote, y + 70, brand)
+            _centered(draw, ["COMMENT 1 OR 2"], _font(64), y + 50, white)
+        else:
+            _centered(draw, ["COMMENT BELOW"], _font(64), y + 50, white)
         return base, layer
 
     logo = _logo(120)
@@ -319,15 +395,20 @@ def captions_ass(words, path, brand, max_words=2):
 def segment_video(base_path, layer_path, audio_path, seconds, out_path, fps, index=0, ass_path=None,
                   look=None, static_burst=False):
     frames = int((seconds + PAD_SECONDS) * fps)
-    # Alternate a slow push in with a slow pull out on the photo so cuts feel alive.
+    # Alternate a slow push in with a slow pull out on the photo so cuts feel alive. Every shot
+    # lands with a quick snap zoom, and punches in closer halfway so nothing sits still for long.
     z = "min(1+0.0009*on,1.12)" if index % 2 == 0 else "max(1.12-0.0009*on,1)"
+    z += f"+0.16*exp(-on/3)+0.10*gte(on,{frames // 2})"
     graph = (
         f"[0:v]scale=2160:-1,zoompan=z='{z}':d={frames}"
-        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={fps}"
+        f":x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*0.4':s=1080x1920:fps={fps}"
     )
+    flash = "0.45*exp(-t*16)" if index else "0"  # a white flash on every cut
     if look == "classic":
         # Moving tape grain and a faint flicker.
-        graph += ",noise=alls=16:allf=t+u,eq=brightness='0.025*sin(t*37)':eval=frame"
+        graph += f",noise=alls=16:allf=t+u,eq=brightness='0.025*sin(t*37)+{flash}':eval=frame"
+    elif index:
+        graph += f",eq=brightness='{flash}':eval=frame"
     if static_burst:
         # A quarter second of TV static as the tape cuts to today.
         graph += ",noise=alls=100:allf=t:enable='lt(t,0.25)'"
@@ -345,7 +426,27 @@ def segment_video(base_path, layer_path, audio_path, seconds, out_path, fps, ind
     )
 
 
-def assemble(segment_paths, out_path, music=None, music_volume=0.12):
+def score_expression(cuts):
+    """An original soundtrack made from pure maths, so no one can ever claim it:
+    a dark minor pad, a steady pulse, a deep hit on every cut and a riser into the final question."""
+    pad = ("0.05*(sin(2*PI*110*t)+sin(2*PI*130.81*t)+sin(2*PI*164.81*t)+0.6*sin(2*PI*220*t))"
+           "*(0.65+0.35*sin(2*PI*0.15*t))+0.10*sin(2*PI*55*t)")
+    kick = "0.30*sin(2*PI*(55*mod(t,0.6)+2.67*(1-exp(-30*mod(t,0.6)))))*exp(-7*mod(t,0.6))"
+    tick = "0.035*(random(0)*2-1)*exp(-40*mod(t+0.3,0.6))"
+    parts = [pad, kick, tick]
+    for c in cuts:
+        d = f"max(t-{c:.2f},0)"
+        parts.append(
+            f"gte(t,{c:.2f})*(0.55*sin(2*PI*(45*{d}+6*(1-exp(-20*{d}))))*exp(-3.5*{d})"
+            f"+0.22*(random(1)*2-1)*exp(-25*{d}))"
+        )
+    if cuts:
+        end = cuts[-1]
+        parts.append(f"0.10*(random(2)*2-1)*pow(clip((t-{end - 1.5:.2f})/1.5,0,1),2)*lt(t,{end:.2f})")
+    return "+".join(parts)
+
+
+def assemble(segment_paths, out_path, music=None, music_volume=0.12, cuts=None):
     workdir = Path(out_path).parent
     listing = workdir / "segments.txt"
     listing.write_text("".join(f"file '{Path(p).name}'\n" for p in segment_paths))
@@ -355,6 +456,25 @@ def assemble(segment_paths, out_path, music=None, music_volume=0.12):
          "-c", "copy", str(joined)],
         check=True,
     )
+    if not music and cuts is not None:
+        # No music file: lay the engine's own score under the voice, ducked whenever he speaks.
+        total = float(subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(joined)],
+            capture_output=True, text=True, check=True).stdout.strip())
+        graph = (
+            f"aevalsrc='{score_expression(cuts)}':s=44100:d={total:.2f},lowpass=f=9000,"
+            f"afade=t=out:st={max(total - 0.8, 0):.2f}:d=0.8[m];"
+            "[0:a]volume=1.5,asplit[v1][v2];"
+            "[m][v2]sidechaincompress=threshold=0.03:ratio=5:attack=15:release=350[duck];"
+            "[v1][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
+        )
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(joined), "-filter_complex", graph,
+             "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-ar", "44100", "-ac", "2", str(out_path)],
+            check=True,
+        )
+        joined.unlink()
+        return
     if not music:
         joined.replace(out_path)
         return

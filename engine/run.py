@@ -56,7 +56,8 @@ def build(script, config, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     segments = script["segments"]
-    clips = voice.narrate(segments, out_dir, config["voice"]["name"], config["voice"]["rate"])
+    narrator = {**config["voice"], **(script.get("narrator") or {})}  # a script may bring its own voice
+    clips = voice.narrate(segments, out_dir, narrator["name"], narrator["rate"], narrator.get("pitch", "+0Hz"))
     bg = render.background(video["width"], video["height"], brand)
     photos = images.PhotoPicker(out_dir)
     parts = []
@@ -91,7 +92,11 @@ def build(script, config, out_dir):
     tracks = sorted((ROOT / "assets" / "music").glob("*.mp3"))
     music = random.choice(tracks) if tracks else None
     reel = out_dir / "reel.mp4"
-    render.assemble(parts, reel, music, video["music_volume"])
+    cuts, clock = [], 0.0
+    for _, seconds, _ in clips:
+        cuts.append(clock)
+        clock += seconds + render.PAD_SECONDS
+    render.assemble(parts, reel, music, video["music_volume"], cuts=cuts)
     for leftover in [*parts, *out_dir.glob("voice_*.mp3"), *out_dir.glob("captions_*.ass"),
                      *out_dir.glob("layer_*.png"), *out_dir.glob("photo_*.jpg"),
                      out_dir / "segments.txt"]:

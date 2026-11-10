@@ -48,10 +48,19 @@
       ]
     },
     {
-      "voice": "So which era made you believe?",
+      "voice": "So which era made you believe? Comment one for classic, two for modern.",
       "screen": "WHICH ERA MADE YOU BELIEVE?",
-      "image": null
+      "image": null,
+      "vote": [
+        "Classic",
+        "Modern"
+      ]
     }
   ],
-  "caption": "ONE MICROPHONE. TWO GENERATIONS. ONE BIG QUESTION.\nBack in the day, one promo could make a rivalry feel personal. Today, WWE gives us years-long sagas, cinematic moments and stories like Cody finishing what Dusty started.\nHas modern wrestling lost something along the way, or has it simply grown into something bigger?\nCLASSIC or MODERN? Drop your answer in the comments.\n#HeadOfTheTableTalk #EraVsEra #WWE #ClassicWrestling #WrestlingCommunity"
+  "caption": "ONE MICROPHONE. TWO GENERATIONS. ONE BIG QUESTION.\nBack in the day, one promo could make a rivalry feel personal. Today, WWE gives us years-long sagas, cinematic moments and stories like Cody finishing what Dusty started.\nHas modern wrestling lost something along the way, or has it simply grown into something bigger?\nCLASSIC or MODERN? Drop your answer in the comments.\n#HeadOfTheTableTalk #EraVsEra #WWE #ClassicWrestling #WrestlingCommunity",
+  "narrator": {
+    "name": "en-US-AndrewMultilingualNeural",
+    "rate": "+6%",
+    "pitch": "-3Hz"
+  }
 }
