@@ -57,7 +57,12 @@ def build(script, config, out_dir):
 
     segments = script["segments"]
     narrator = {**config["voice"], **(script.get("narrator") or {})}  # a script may bring its own voice
-    clips = voice.narrate(segments, out_dir, narrator["name"], narrator["rate"], narrator.get("pitch", "+0Hz"))
+    try:
+        clips = voice.narrate(segments, out_dir, narrator["name"], narrator["rate"], narrator.get("pitch", "+0Hz"))
+        print(f"Voice: {narrator['name']}")
+    except Exception as error:  # noqa: BLE001  an unknown voice must not cost us the Reel
+        print(f"Voice {narrator['name']} failed ({error}); using {config['voice']['name']} instead.")
+        clips = voice.narrate(segments, out_dir, config["voice"]["name"], config["voice"]["rate"])
     bg = render.background(video["width"], video["height"], brand)
     photos = images.PhotoPicker(out_dir)
     parts = []
