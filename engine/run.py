@@ -69,7 +69,7 @@ def build(script, config, out_dir):
     previous_era = None
     for i, (segment, (audio, seconds, words)) in enumerate(zip(segments, clips)):
         if segment.get("images"):  # a THEN / NOW split screen
-            photo = [photos.photo_for(query, f"{i}_{k}") for k, query in enumerate(segment["images"][:2])]
+            photo = [photos.photo_for(query, f"{i}_{k}", reuse=True) for k, query in enumerate(segment["images"][:2])]
         else:
             photo = photos.photo_for(segment.get("image"), i)
         era = segment.get("era")

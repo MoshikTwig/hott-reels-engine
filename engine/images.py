@@ -75,10 +75,14 @@ class PhotoPicker:
         self.used = set()
         self.credits = []
         self.last = None
+        self.best = {}
 
-    def photo_for(self, query, index):
+    def photo_for(self, query, index, reuse=False):
+        """`reuse` hands back the best photo already shown for this name (for split screens)."""
         if not query:
             return self.last
+        if reuse and query in self.best:
+            return self.best[query]
         if query not in self.cache:
             try:
                 self.cache[query] = search(query)
@@ -103,18 +107,19 @@ class PhotoPicker:
             tried += 1
             path.write_bytes(response.content)
             if render.cv2 is None or render.has_face(path):
-                return self._take(candidate, path)
+                return self._take(candidate, path, query)
             fallback = fallback or (candidate, response.content)
         if fallback:
             path.write_bytes(fallback[1])
-            return self._take(fallback[0], path)
+            return self._take(fallback[0], path, query)
         print(f"No new photo found for {query!r}, reusing the previous one.")
         return self.last
 
-    def _take(self, candidate, path):
+    def _take(self, candidate, path, query=None):
         self.used.add(candidate["url"])
         self.credits.append(f"{candidate['artist']} ({candidate['license']})")
         self.last = path
+        self.best.setdefault(query, path)
         return path
 
     def credit_line(self):
