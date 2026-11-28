@@ -67,6 +67,9 @@
       "image": ""
     },
     "kicker": "Where do you stand?",
-    "image": "/home/runner/work/hott-reels-engine/hott-reels-engine/out/2026-11-28-news/post-4.jpg"
+    "image": "/home/runner/work/hott-reels-engine/hott-reels-engine/out/2026-11-28-news/post-4.jpg",
+    "sent_to_make": true,
+    "published": "2026-11-28T17:00+00:00",
+    "errors": []
   }
 ]
